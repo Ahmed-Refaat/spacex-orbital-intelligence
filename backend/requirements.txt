@@ -2,6 +2,7 @@
 fastapi==0.109.2
 uvicorn[standard]==0.27.1
 python-dotenv==1.0.1
+slowapi==0.1.9
 
 # Orbital mechanics
 sgp4==2.23
