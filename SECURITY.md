@@ -14,10 +14,11 @@
 |-----------|--------|---------|
 | Redis | ✅ **SECURED** | Password-protected, no public port |
 | PostgreSQL | ✅ **SECURED** | Strong password, no public port |
-| Backend API | ⚠️ **PARTIALLY** | Public on port 8000, rate-limited but no API key |
-| Frontend | ✅ **OK** | Public as intended |
+| Backend API | ✅ **SECURED** | Behind Nginx reverse proxy, HTTPS only |
+| Frontend | ✅ **SECURED** | Behind Nginx reverse proxy, HTTPS only |
 | CORS | ✅ **CONFIGURED** | Restricted to spacex.ericcesar.com |
-| SSL/HTTPS | ⚠️ **MISSING** | Should add reverse proxy with Let's Encrypt |
+| SSL/HTTPS | ✅ **ENABLED** | Let's Encrypt certificate via Nginx |
+| Nginx Proxy | ✅ **ACTIVE** | Reverse proxy with SSL termination |
 
 ## 🚀 Setup for New Users
 
@@ -42,12 +43,27 @@
    docker-compose up -d
    ```
 
-## 🛡️ Recommended Next Steps (P1)
+## 🛡️ Production Setup (Completed)
 
-1. **Add SSL/HTTPS** - Set up Nginx reverse proxy with Let's Encrypt
-2. **API Authentication** - Enable `SPACEX_API_KEY` in `.env` for sensitive endpoints
-3. **Firewall** - Configure `ufw` to only allow 80/443 from outside
-4. **Rate Limiting** - Verify `slowapi` limits are properly configured
+✅ **Nginx Reverse Proxy**
+- Location: `/etc/nginx/sites-available/spacex.ericcesar.com.conf`
+- Frontend: `https://spacex.ericcesar.com/` → `localhost:3100`
+- Backend API: `https://spacex.ericcesar.com/api` → `localhost:8000`
+- WebSocket: `wss://spacex.ericcesar.com/ws` → `localhost:8000`
+- SSL Certificate: Let's Encrypt (auto-renewal enabled)
+- HTTP → HTTPS redirect: Active
+
+✅ **Ports Secured**
+- Backend: Port 8000 not exposed publicly (localhost only)
+- Frontend: Port 3100 not exposed publicly (localhost only)
+- All traffic goes through Nginx on ports 80/443
+
+## 🛡️ Recommended Next Steps (Optional)
+
+1. **API Authentication** - Enable `SPACEX_API_KEY` in `.env` for sensitive endpoints
+2. **Firewall** - Configure `ufw` to only allow 80/443 from outside
+3. **Rate Limiting** - Verify `slowapi` limits are properly configured
+4. **Monitoring** - Add uptime monitoring and alerting
 
 ## 📋 What Changed
 
