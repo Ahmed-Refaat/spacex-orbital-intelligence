@@ -121,13 +121,17 @@ async def verify_websocket_token(websocket: WebSocket) -> bool:
     
     Returns True if authenticated or if auth is disabled in dev mode.
     """
+    import os
     settings = get_settings()
-    valid_key = get_valid_api_key()
     
-    # In development without API key, allow all connections
-    if not valid_key:
-        logger.warning("WebSocket auth disabled - no API key configured")
+    # Check if API key is explicitly configured (not auto-generated)
+    explicit_api_key = os.environ.get("SPACEX_API_KEY")
+    
+    # In development without explicit API key, allow all connections
+    if not explicit_api_key:
         return True
+    
+    valid_key = get_valid_api_key()
     
     # Check query parameter
     token = websocket.query_params.get("token")
