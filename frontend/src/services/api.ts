@@ -1,7 +1,5 @@
 import type {
   SatellitePosition,
-  SatelliteDetail,
-  OrbitData,
   CollisionRisk,
   DensityData,
   AltitudeDistribution,
@@ -12,8 +10,6 @@ import type {
 } from '@/types'
 import {
   PositionsResponseSchema,
-  HealthResponseSchema,
-  LaunchesResponseSchema,
   InitialDataSchema,
   SatelliteDetailSchema,
   OrbitDataSchema,

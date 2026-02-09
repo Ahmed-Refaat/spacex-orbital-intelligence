@@ -181,7 +181,7 @@ function SelectedSatelliteCard({
           <div>
             <div className="text-xs text-gray-400">Position</div>
             <div>
-              {data.geographic.latitude.toFixed(2)}°, {data.geographic.longitude.toFixed(2)}°
+              {data.latitude.toFixed(2)}°, {data.longitude.toFixed(2)}°
             </div>
           </div>
         </div>
@@ -189,14 +189,14 @@ function SelectedSatelliteCard({
           <Gauge size={14} className="text-green-400" />
           <div>
             <div className="text-xs text-gray-400">Altitude</div>
-            <div>{data.geographic.altitude.toFixed(1)} km</div>
+            <div>{data.altitude.toFixed(1)} km</div>
           </div>
         </div>
         <div className="flex items-center gap-2">
           <Clock size={14} className="text-yellow-400" />
           <div>
             <div className="text-xs text-gray-400">Velocity</div>
-            <div>{data.speed.toFixed(2)} km/s</div>
+            <div>{data.velocity.toFixed(2)} km/s</div>
           </div>
         </div>
       </div>
