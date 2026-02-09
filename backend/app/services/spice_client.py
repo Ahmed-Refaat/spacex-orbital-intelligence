@@ -173,7 +173,7 @@ class SpiceClient:
         
         # Make actual call
         try:
-            response = await self.client.get("/health")
+            response = await self.client.get("/api/spice/sgp4/health")
             self.available = response.status_code == 200
             
             # Cache the result
