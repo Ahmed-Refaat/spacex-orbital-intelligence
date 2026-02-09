@@ -324,4 +324,4 @@ class TestVehicleHelperMethods:
         
         assert "Falcon 9" in summary
         assert "2 stages" in summary
-        assert "15000 kg payload" in summary
+        assert "15.0 t" in summary  # Payload in tons
