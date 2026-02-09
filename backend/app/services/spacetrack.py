@@ -362,6 +362,108 @@ class SpaceTrackClient:
         except Exception:
             return None
     
+    async def get_omm(
+        self, 
+        norad_id: Optional[str] = None,
+        format: Literal["xml", "json"] = "json",
+        limit: int = 100
+    ) -> Optional[str]:
+        """
+        Get OMM (Orbit Mean-Elements Message) data from Space-Track.
+        
+        Args:
+            norad_id: Specific NORAD ID, or None for all active satellites
+            format: "xml" for OMM XML (CCSDS), "json" for JSON format
+            limit: Maximum number of records to return
+            
+        Returns:
+            OMM data as string (XML or JSON)
+            
+        Space-Track GP class documentation:
+        https://www.space-track.org/basicspacedata/modeldef/class/gp
+        """
+        if not await self._authenticate():
+            return None
+        
+        client = await self._get_client()
+        
+        try:
+            # Build query for GP (General Perturbations) class
+            # GP class contains OMM-format orbital elements
+            if norad_id:
+                query = (
+                    f"/basicspacedata/query/class/gp"
+                    f"/NORAD_CAT_ID/{norad_id}"
+                    f"/orderby/EPOCH desc"
+                    f"/limit/1"
+                    f"/format/{format}"
+                )
+            else:
+                # Get all active satellites (latest epoch only)
+                query = (
+                    f"/basicspacedata/query/class/gp"
+                    f"/EPOCH/>now-7"  # Last 7 days
+                    f"/orderby/NORAD_CAT_ID,EPOCH desc"
+                    f"/limit/{limit}"
+                    f"/format/{format}"
+                )
+            
+            response = await client.get(query, cookies=self._cookies)
+            
+            if response.status_code == 200:
+                if format == "json":
+                    return response.text
+                else:
+                    # XML format
+                    return response.text
+            
+            return None
+            
+        except Exception as e:
+            print(f"OMM fetch error: {e}")
+            return None
+    
+    async def get_omm_starlink(
+        self,
+        format: Literal["xml", "json"] = "json",
+        limit: int = 1000
+    ) -> Optional[str]:
+        """
+        Get OMM data for all Starlink satellites.
+        
+        Args:
+            format: "xml" or "json"
+            limit: Max number of satellites (default 1000)
+            
+        Returns:
+            OMM data as string
+        """
+        if not await self._authenticate():
+            return None
+        
+        client = await self._get_client()
+        
+        try:
+            query = (
+                f"/basicspacedata/query/class/gp"
+                f"/OBJECT_NAME/~~STARLINK"  # Contains STARLINK
+                f"/EPOCH/>now-7"  # Last 7 days
+                f"/orderby/NORAD_CAT_ID,EPOCH desc"
+                f"/limit/{limit}"
+                f"/format/{format}"
+            )
+            
+            response = await client.get(query, cookies=self._cookies)
+            
+            if response.status_code == 200:
+                return response.text
+            
+            return None
+            
+        except Exception as e:
+            print(f"Starlink OMM fetch error: {e}")
+            return None
+    
     async def get_satellite_catalog(self, norad_ids: list[str]) -> dict[str, SatelliteCatalogEntry]:
         """
         Fetch satellite catalog entries for given NORAD IDs.
