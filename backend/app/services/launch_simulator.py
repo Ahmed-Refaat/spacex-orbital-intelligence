@@ -255,8 +255,20 @@ class PhysicsEngine:
             net_force = thrust_force - drag_force - gravity_force
             acceleration = net_force / state.mass_kg  # m/s^2
             
-            # Check structural limits (5g max)
-            if abs(acceleration) > 5 * G:
+            # Throttle control: reduce thrust if approaching g-limit
+            max_g = 6.0  # Max allowed acceleration (realistic for crewed: 3-4g, uncrewed: 6-8g)
+            if acceleration > max_g * G:
+                # Throttle down to stay within limits
+                target_accel = max_g * G * 0.95
+                thrust = (target_accel + G) * state.mass_kg + drag_force
+                thrust = max(thrust, 0)  # Can't have negative thrust
+                # Recalculate with throttled thrust
+                thrust_force = thrust
+                net_force = thrust_force - drag_force - gravity_force
+                acceleration = net_force / state.mass_kg
+            
+            # Check structural limits (only fail if throttle can't save us)
+            if abs(acceleration) > 8 * G:  # Hard limit
                 return TrajectoryResult(
                     success=False,
                     reason="structural_failure",

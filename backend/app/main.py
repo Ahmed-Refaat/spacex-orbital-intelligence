@@ -26,7 +26,7 @@ from app.services.spacex_api import spacex_client
 from app.services.orbital_engine import orbital_engine
 from app.services.spice_client import spice_client
 from app.services import async_orbital_engine
-from app.api import satellites, analysis, launches, websocket, ops, analytics, launches_live, cdm, export, monitoring, performance, rate_limits, launch_simulation, data_source
+from app.api import satellites, analysis, ephemeris, launches, websocket, ops, analytics, launches_live, cdm, export, monitoring, performance, rate_limits, launch_simulation, data_source
 
 # Configure logging
 structlog.configure(
@@ -259,6 +259,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 # Include routers
 app.include_router(satellites.router, prefix=settings.api_prefix)
 app.include_router(analysis.router, prefix=settings.api_prefix)
+app.include_router(ephemeris.router, prefix=settings.api_prefix)
 app.include_router(launches.router, prefix=settings.api_prefix)
 app.include_router(ops.router, prefix=settings.api_prefix)
 app.include_router(analytics.router, prefix=settings.api_prefix)
