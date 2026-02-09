@@ -303,6 +303,98 @@ class AnisePlanetaryService:
             float(aer.range_km)
         )
     
+    def check_eclipse(
+        self,
+        satellite_position: Tuple[float, float, float],
+        satellite_velocity: Tuple[float, float, float],
+        epoch: datetime
+    ) -> dict:
+        """
+        Check if satellite is in Earth's shadow (eclipse).
+        
+        Args:
+            satellite_position: (x, y, z) in km (ECI J2000 frame)
+            satellite_velocity: (vx, vy, vz) in km/s
+            epoch: Time of check (UTC)
+        
+        Returns:
+            {
+                "in_eclipse": bool,
+                "eclipse_type": "visible" | "partial" | "full",
+                "eclipse_percentage": float (0-100),
+                "computation_time_ms": float
+            }
+        """
+        if not self.is_ready():
+            raise RuntimeError("ANISE not ready")
+        
+        start = time.perf_counter()
+        
+        # Convert datetime to ANISE epoch
+        anise_epoch = self._datetime_to_epoch(epoch)
+        
+        # Create satellite orbit
+        from anise.astro import Orbit
+        from anise.constants import Frames
+        
+        eme2k = self._almanac.frame_info(Frames.EARTH_J2000)
+        satellite_orbit = Orbit.from_cartesian(
+            satellite_position[0],
+            satellite_position[1],
+            satellite_position[2],
+            satellite_velocity[0],
+            satellite_velocity[1],
+            satellite_velocity[2],
+            anise_epoch,
+            eme2k
+        )
+        
+        # Check solar eclipsing
+        occultation = self._almanac.solar_eclipsing(
+            Frames.EARTH_J2000,  # Earth blocks Sun
+            satellite_orbit,
+            None  # No aberration correction
+        )
+        
+        # Determine eclipse state
+        if occultation.is_visible:
+            eclipse_type = "visible"
+            in_eclipse = False
+        elif occultation.is_partial:
+            eclipse_type = "partial"
+            in_eclipse = True
+        elif occultation.is_obstructed:
+            eclipse_type = "full"
+            in_eclipse = True
+        else:
+            eclipse_type = "unknown"
+            in_eclipse = False
+        
+        # Get eclipse percentage
+        # occultation.percentage = fraction of Sun visible (1.0 = fully visible, 0.0 = fully blocked)
+        # Eclipse percentage = 100 - (Sun visible percentage)
+        sun_visible_pct = occultation.percentage * 100.0
+        eclipse_percentage = 100.0 - sun_visible_pct
+        
+        # Clamp to valid range [0, 100]
+        eclipse_percentage = max(0.0, min(100.0, eclipse_percentage))
+        
+        duration_ms = (time.perf_counter() - start) * 1000
+        
+        logger.debug(
+            "eclipse_check",
+            eclipse_type=eclipse_type,
+            percentage=round(eclipse_percentage, 1),
+            duration_ms=round(duration_ms, 3)
+        )
+        
+        return {
+            "in_eclipse": in_eclipse,
+            "eclipse_type": eclipse_type,
+            "eclipse_percentage": round(eclipse_percentage, 2),
+            "computation_time_ms": round(duration_ms, 3)
+        }
+    
     def _get_frame_id(self, body: str):
         """Map body name to ANISE frame constant."""
         body_upper = body.upper()
