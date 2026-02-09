@@ -8,7 +8,8 @@ afterEach(() => {
 })
 
 // Mock fetch globally
-global.fetch = vi.fn()
+// @ts-ignore - globalThis.fetch exists in test environment
+globalThis.fetch = vi.fn()
 
 // Mock WebSocket
 class MockWebSocket {
@@ -37,11 +38,12 @@ class MockWebSocket {
   }
 }
 
-// @ts-ignore
-global.WebSocket = MockWebSocket
+// @ts-ignore - globalThis.WebSocket exists in test environment
+globalThis.WebSocket = MockWebSocket as unknown as typeof WebSocket
 
 // Mock ResizeObserver
-global.ResizeObserver = vi.fn().mockImplementation(() => ({
+// @ts-ignore
+globalThis.ResizeObserver = vi.fn().mockImplementation(() => ({
   observe: vi.fn(),
   unobserve: vi.fn(),
   disconnect: vi.fn(),
