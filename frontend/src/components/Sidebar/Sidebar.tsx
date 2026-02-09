@@ -1,11 +1,6 @@
+import { lazy, Suspense } from 'react'
 import { useStore } from '@/stores/useStore'
-import { SatellitesTab } from './SatellitesTab'
-import { AnalysisTab } from './AnalysisTab'
-import { LaunchesTab } from './LaunchesTab'
-import { SimulationTab } from './SimulationTab'
-import { OpsTab } from './OpsTab'
-import { InsightsTab } from './InsightsTab'
-import { PerformanceTab } from './PerformanceTab'
+import { SatellitesTab } from './SatellitesTab' // Eager load (always visible)
 import { 
   Satellite, 
   BarChart3, 
@@ -17,6 +12,14 @@ import {
   ChevronLeft,
   ChevronRight
 } from 'lucide-react'
+
+// Lazy load tabs that aren't always visible
+const AnalysisTab = lazy(() => import('./AnalysisTab').then(m => ({ default: m.AnalysisTab })))
+const LaunchesTab = lazy(() => import('./LaunchesTab').then(m => ({ default: m.LaunchesTab })))
+const SimulationTab = lazy(() => import('./SimulationTab').then(m => ({ default: m.SimulationTab })))
+const OpsTab = lazy(() => import('./OpsTab').then(m => ({ default: m.OpsTab })))
+const InsightsTab = lazy(() => import('./InsightsTab').then(m => ({ default: m.InsightsTab })))
+const PerformanceTab = lazy(() => import('./PerformanceTab').then(m => ({ default: m.PerformanceTab })))
 
 const tabs = [
   { id: 'satellites' as const, label: 'Satellites', icon: Satellite },
@@ -68,14 +71,32 @@ export function Sidebar() {
 
         {/* Tab content */}
         <div className="flex-1 overflow-y-auto p-4">
-          {activeTab === 'satellites' && <SatellitesTab />}
-          {activeTab === 'ops' && <OpsTab />}
-          {activeTab === 'insights' && <InsightsTab />}
-          {activeTab === 'analysis' && <AnalysisTab />}
-          {activeTab === 'launches' && <LaunchesTab />}
-          {activeTab === 'simulation' && <SimulationTab />}
-          {activeTab === 'performance' && <PerformanceTab />}
+          <Suspense fallback={<TabSkeleton />}>
+            {activeTab === 'satellites' && <SatellitesTab />}
+            {activeTab === 'ops' && <OpsTab />}
+            {activeTab === 'insights' && <InsightsTab />}
+            {activeTab === 'analysis' && <AnalysisTab />}
+            {activeTab === 'launches' && <LaunchesTab />}
+            {activeTab === 'simulation' && <SimulationTab />}
+            {activeTab === 'performance' && <PerformanceTab />}
+          </Suspense>
         </div>
+      </div>
+    </div>
+  )
+}
+
+// Loading skeleton for lazy-loaded tabs
+function TabSkeleton() {
+  return (
+    <div className="space-y-4 animate-pulse">
+      <div className="h-4 bg-gray-700 rounded w-3/4"></div>
+      <div className="h-4 bg-gray-700 rounded w-1/2"></div>
+      <div className="h-4 bg-gray-700 rounded w-5/6"></div>
+      <div className="space-y-2 mt-6">
+        <div className="h-20 bg-gray-700/50 rounded"></div>
+        <div className="h-20 bg-gray-700/50 rounded"></div>
+        <div className="h-20 bg-gray-700/50 rounded"></div>
       </div>
     </div>
   )

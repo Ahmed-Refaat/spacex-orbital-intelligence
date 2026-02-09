@@ -9,6 +9,23 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // Three.js and 3D visualization libs
+          'three': ['three', '@react-three/fiber', '@react-three/drei'],
+          // Charts library
+          'charts': ['recharts'],
+          // Core React libraries
+          'vendor': ['react', 'react-dom', 'zustand', '@tanstack/react-query'],
+          // Zod validation
+          'validation': ['zod'],
+        },
+      },
+    },
+    chunkSizeWarningLimit: 600, // Warn if chunk > 600KB
+  },
   server: {
     port: 3000,
     proxy: {

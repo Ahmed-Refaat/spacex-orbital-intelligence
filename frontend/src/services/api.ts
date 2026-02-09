@@ -10,6 +10,14 @@ import type {
   Core,
   FleetStats,
 } from '@/types'
+import {
+  PositionsResponseSchema,
+  HealthResponseSchema,
+  LaunchesResponseSchema,
+  InitialDataSchema,
+  SatelliteDetailSchema,
+  OrbitDataSchema,
+} from '@/types/schemas'
 
 const API_BASE = '/api/v1'
 
@@ -21,7 +29,7 @@ async function fetchJson<T>(url: string): Promise<T> {
   return response.json()
 }
 
-// Batch fetch - Parallel API calls to reduce initial load time
+// Batch fetch - Parallel API calls to reduce initial load time (with validation)
 export async function getInitialData() {
   const [positions, health, launches] = await Promise.all([
     getAllPositions(),
@@ -29,11 +37,14 @@ export async function getInitialData() {
     getLaunches(20, false)
   ])
   
-  return {
+  const data = {
     positions,
     health,
     launches
   }
+  
+  // Validate with Zod
+  return InitialDataSchema.parse(data)
 }
 
 // Satellites
@@ -45,20 +56,20 @@ export async function getSatellites(limit = 100, offset = 0) {
 }
 
 export async function getAllPositions() {
-  return fetchJson<{
-    count: number
-    positions: SatellitePosition[]
-  }>(`${API_BASE}/satellites/positions`)
+  const data = await fetchJson(`${API_BASE}/satellites/positions`)
+  return PositionsResponseSchema.parse(data)
 }
 
 export async function getSatellite(id: string) {
-  return fetchJson<SatelliteDetail>(`${API_BASE}/satellites/${id}`)
+  const data = await fetchJson(`${API_BASE}/satellites/${id}`)
+  return SatelliteDetailSchema.parse(data)
 }
 
 export async function getSatelliteOrbit(id: string, hours = 24, stepMinutes = 5) {
-  return fetchJson<OrbitData>(
+  const data = await fetchJson(
     `${API_BASE}/satellites/${id}/orbit?hours=${hours}&step_minutes=${stepMinutes}`
   )
+  return OrbitDataSchema.parse(data)
 }
 
 // Analysis
