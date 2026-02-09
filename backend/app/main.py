@@ -50,7 +50,7 @@ async def lifespan(app: FastAPI):
         logger.warning("Redis connection failed, running without cache", error=str(e))
     
     # Initialize SPICE client
-    spice_url = settings.SPICE_URL if hasattr(settings, 'SPICE_URL') else "http://spice:50000"
+    spice_url = settings.SPICE_URL if hasattr(settings, 'SPICE_URL') else "http://spice:3000"
     try:
         await asyncio.wait_for(spice_client.health_check(), timeout=3)
         logger.info("SPICE service available", url=spice_url)

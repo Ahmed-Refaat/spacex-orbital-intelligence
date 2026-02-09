@@ -45,7 +45,7 @@ class AsyncOrbitalEngine:
         self,
         orbital_engine: OrbitalEngine,
         spice_client: Optional[SpiceClient] = None,
-        spice_url: str = "http://spice:50000"
+        spice_url: str = "http://spice:3000"
     ):
         """
         Initialize async orbital engine.

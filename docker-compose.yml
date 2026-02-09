@@ -4,13 +4,13 @@ services:
     image: ghcr.io/haisamido/spice:latest
     container_name: spacex-orbital-spice
     ports:
-      - "127.0.0.1:50000:50000"
+      - "127.0.0.1:50000:3000"
     environment:
       - SGP4_POOL_SIZE=12
       - LOG_LEVEL=info
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:50000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/spice/sgp4/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -27,7 +27,7 @@ services:
     environment:
       - REDIS_URL=redis://:${REDIS_PASSWORD:-spacex_redis_secure_2024}@redis:6379/0
       - DATABASE_URL=postgresql+asyncpg://spacex:${POSTGRES_PASSWORD:-change_me_in_production}@postgres:5432/spacex_orbital
-      - SPICE_URL=http://spice:50000
+      - SPICE_URL=http://spice:3000
       - DEBUG=false
     depends_on:
       - redis

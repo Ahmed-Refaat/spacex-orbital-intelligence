@@ -111,7 +111,7 @@ class SpiceClient:
     - Automatic fallback to SGP4
     
     Example:
-        >>> client = SpiceClient("http://spice:50000")
+        >>> client = SpiceClient("http://spice:3000")
         >>> await client.health_check()
         True
         >>> result = await client.load_omm(omm_xml_content, format='xml')
@@ -120,7 +120,7 @@ class SpiceClient:
     
     def __init__(
         self,
-        base_url: str = "http://spice:50000",
+        base_url: str = "http://spice:3000",
         timeout: float = 30.0
     ):
         """
