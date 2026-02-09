@@ -141,6 +141,79 @@ class OrbitalEngine:
         dt = datetime.utcnow() + timedelta(seconds=seconds_offset)
         return self.propagate(satellite_id, dt)
     
+    def propagate_batch(
+        self,
+        satellite_ids: list[str],
+        dt: Optional[datetime] = None
+    ) -> list[SatellitePosition]:
+        """
+        Propagate multiple satellites at the same time efficiently.
+        
+        This is more efficient than calling propagate() in a loop because:
+        - Single Julian date calculation
+        - Single GMST calculation for coordinate conversion
+        - Reduced function call overhead
+        
+        Args:
+            satellite_ids: List of satellite IDs to propagate
+            dt: Target datetime (defaults to now)
+            
+        Returns:
+            List of SatellitePosition objects (only successful propagations)
+        """
+        if dt is None:
+            dt = datetime.utcnow()
+        
+        # Pre-calculate Julian date once
+        jd, fr = jday(dt.year, dt.month, dt.day,
+                      dt.hour, dt.minute, dt.second + dt.microsecond / 1e6)
+        
+        # Pre-calculate GMST for coordinate conversion
+        d = jd - 2451545.0 + fr
+        gmst = 280.46061837 + 360.98564736629 * d
+        gmst = gmst % 360
+        gmst_rad = math.radians(gmst)
+        
+        positions = []
+        
+        for sat_id in satellite_ids:
+            if sat_id not in self._satellites:
+                continue
+            
+            satellite = self._satellites[sat_id]
+            error, position, velocity = satellite.sgp4(jd, fr)
+            
+            if error != 0:
+                continue
+            
+            x, y, z = position
+            vx, vy, vz = velocity
+            
+            # Optimized ECI to geodetic using pre-calculated GMST
+            x_ecef = x * math.cos(gmst_rad) + y * math.sin(gmst_rad)
+            y_ecef = -x * math.sin(gmst_rad) + y * math.cos(gmst_rad)
+            z_ecef = z
+            
+            r = math.sqrt(x_ecef**2 + y_ecef**2 + z_ecef**2)
+            lon = math.degrees(math.atan2(y_ecef, x_ecef))
+            lat = math.degrees(math.asin(z_ecef / r))
+            alt = r - self.EARTH_RADIUS
+            
+            vel_mag = math.sqrt(vx**2 + vy**2 + vz**2)
+            
+            positions.append(SatellitePosition(
+                satellite_id=sat_id,
+                timestamp=dt,
+                x=x, y=y, z=z,
+                vx=vx, vy=vy, vz=vz,
+                latitude=lat,
+                longitude=lon,
+                altitude=alt,
+                velocity=vel_mag
+            ))
+        
+        return positions
+    
     def propagate_orbit(
         self,
         satellite_id: str,
@@ -274,16 +347,11 @@ class OrbitalEngine:
         return lat, lon, alt
     
     def get_all_positions(self) -> list[SatellitePosition]:
-        """Get current positions of all loaded satellites."""
-        now = datetime.utcnow()
-        positions = []
+        """Get current positions of all loaded satellites.
         
-        for sat_id in self._satellites:
-            pos = self.propagate(sat_id, now)
-            if pos:
-                positions.append(pos)
-        
-        return positions
+        Uses batch propagation for efficiency.
+        """
+        return self.propagate_batch(list(self._satellites.keys()))
     
     @property
     def satellite_count(self) -> int:

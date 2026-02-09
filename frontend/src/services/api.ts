@@ -17,8 +17,62 @@ import {
 
 const API_BASE = '/api/v1'
 
-async function fetchJson<T>(url: string): Promise<T> {
-  const response = await fetch(url)
+// Default timeouts (ms) - exported for use in components
+export const DEFAULT_TIMEOUT = 10000  // 10s for most requests
+export const LONG_TIMEOUT = 30000     // 30s for heavy computations
+
+/**
+ * Fetch with timeout - prevents hanging requests
+ * AbortController ensures cleanup on timeout
+ * @exported for direct use in components
+ */
+export async function fetchWithTimeout(
+  url: string,
+  options: RequestInit = {},
+  timeoutMs = DEFAULT_TIMEOUT
+): Promise<Response> {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+  
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    })
+    return response
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error(`Request timeout after ${timeoutMs}ms: ${url}`)
+    }
+    throw error
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
+
+async function fetchJson<T>(url: string, timeoutMs = DEFAULT_TIMEOUT): Promise<T> {
+  const response = await fetchWithTimeout(url, {}, timeoutMs)
+  if (!response.ok) {
+    throw new Error(`API error: ${response.status}`)
+  }
+  return response.json()
+}
+
+// For POST requests with timeout
+async function postJson<T>(
+  url: string,
+  body?: unknown,
+  timeoutMs = DEFAULT_TIMEOUT
+): Promise<T> {
+  const response = await fetchWithTimeout(
+    url,
+    {
+      method: 'POST',
+      headers: body ? { 'Content-Type': 'application/json' } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+    },
+    timeoutMs
+  )
   if (!response.ok) {
     throw new Error(`API error: ${response.status}`)
   }
@@ -68,7 +122,7 @@ export async function getSatelliteOrbit(id: string, hours = 24, stepMinutes = 5)
   return OrbitDataSchema.parse(data)
 }
 
-// Analysis
+// Analysis - CPU-intensive endpoints use longer timeout
 export async function getSatelliteRisk(id: string, hoursAhead = 24) {
   return fetchJson<{
     satellite_id: string
@@ -76,12 +130,13 @@ export async function getSatelliteRisk(id: string, hoursAhead = 24) {
     altitude_km: number
     nearby_count: number
     risks: CollisionRisk[]
-  }>(`${API_BASE}/analysis/risk/${id}?hours_ahead=${hoursAhead}`)
+  }>(`${API_BASE}/analysis/risk/${id}?hours_ahead=${hoursAhead}`, LONG_TIMEOUT)
 }
 
 export async function getDensity(altitudeKm = 550, toleranceKm = 50) {
   return fetchJson<DensityData>(
-    `${API_BASE}/analysis/density?altitude_km=${altitudeKm}&tolerance_km=${toleranceKm}`
+    `${API_BASE}/analysis/density?altitude_km=${altitudeKm}&tolerance_km=${toleranceKm}`,
+    LONG_TIMEOUT
   )
 }
 
@@ -177,12 +232,11 @@ export async function getGroundStationVisibility(satelliteId: string) {
 }
 
 export async function simulateDeorbit(id: string, deltaV = 0.1) {
-  const response = await fetch(
+  return postJson(
     `${API_BASE}/analysis/simulate/deorbit?satellite_id=${id}&delta_v=${deltaV}`,
-    { method: 'POST' }
+    undefined,
+    LONG_TIMEOUT
   )
-  if (!response.ok) throw new Error(`API error: ${response.status}`)
-  return response.json()
 }
 
 // Launches

@@ -11,6 +11,15 @@ import time
 
 from app.core.config import get_settings
 from app.core.security import limiter, get_allowed_origins, get_valid_api_key
+from app.core.metrics import (
+    record_request, 
+    set_app_info, 
+    get_metrics, 
+    get_content_type,
+    WEBSOCKET_CONNECTIONS,
+    SATELLITES_LOADED,
+    TLE_LAST_UPDATE
+)
 from app.services.cache import cache
 from app.services.tle_service import tle_service
 from app.services.spacex_api import spacex_client
@@ -37,11 +46,21 @@ structlog.configure(
 logger = structlog.get_logger()
 settings = get_settings()
 
+# API version constants
+API_VERSION = "1.0.0"
+API_MIN_VERSION = "1.0.0"
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan management."""
     logger.info("Starting SpaceX Orbital Intelligence Platform")
+    
+    # Set Prometheus app info
+    set_app_info(
+        version=API_VERSION,
+        environment=settings.environment if hasattr(settings, 'environment') else 'production'
+    )
     
     # Connect to Redis (non-blocking)
     try:
@@ -135,15 +154,37 @@ app.add_middleware(
 )
 
 
-# Request logging middleware
+# Request logging middleware with version headers and metrics
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
-    """Log all requests with timing."""
+    """Log all requests with timing, add version headers, and record metrics."""
     start_time = time.time()
     
     response = await call_next(request)
     
+    # Add API version headers
+    response.headers["X-API-Version"] = API_VERSION
+    response.headers["X-API-Min-Version"] = API_MIN_VERSION
+    
     duration = time.time() - start_time
+    
+    # Record Prometheus metrics (skip /metrics endpoint to avoid recursion)
+    if not request.url.path.startswith("/metrics"):
+        # Simplify endpoint for cardinality control
+        endpoint = request.url.path.split("?")[0]
+        # Group dynamic IDs
+        parts = endpoint.split("/")
+        if len(parts) > 3 and parts[2] == "satellites" and len(parts) > 3:
+            parts[3] = "{id}"
+            endpoint = "/".join(parts)
+        
+        record_request(
+            method=request.method,
+            endpoint=endpoint,
+            status_code=response.status_code,
+            duration=duration
+        )
+    
     logger.info(
         "request",
         method=request.method,
@@ -250,10 +291,79 @@ async def root():
     """API information."""
     return {
         "name": settings.app_name,
-        "version": "1.0.0",
+        "version": API_VERSION,
+        "api_prefix": settings.api_prefix,
         "docs": "/docs",
         "health": "/health",
         "websocket": "/ws/positions"
+    }
+
+
+@app.get("/metrics")
+async def metrics():
+    """
+    Prometheus metrics endpoint.
+    
+    Exposes metrics for:
+    - HTTP request duration and counts
+    - Satellite propagation performance
+    - Cache hit/miss rates
+    - WebSocket connections
+    - Error rates
+    
+    **Usage:**
+    ```yaml
+    # prometheus.yml
+    scrape_configs:
+      - job_name: 'spacex-orbital'
+        static_configs:
+          - targets: ['localhost:8000']
+    ```
+    """
+    from fastapi.responses import Response
+    
+    # Update satellite count metric
+    SATELLITES_LOADED.set(tle_service.satellite_count)
+    if tle_service.last_update:
+        TLE_LAST_UPDATE.set(tle_service.last_update.timestamp())
+    
+    return Response(
+        content=get_metrics(),
+        media_type=get_content_type()
+    )
+
+
+@app.get("/api/version")
+async def api_version():
+    """
+    API version information.
+    
+    **Version Strategy:**
+    - URL: /api/v1/* (current)
+    - Headers: X-API-Version, X-API-Min-Version
+    - Breaking changes increment major version
+    - New features increment minor version
+    
+    **Deprecation Policy:**
+    - Deprecated endpoints marked in docs
+    - Deprecated versions supported for 6 months
+    - Sunset header added for deprecated endpoints
+    """
+    return {
+        "current_version": API_VERSION,
+        "min_supported_version": API_MIN_VERSION,
+        "versions": [
+            {
+                "version": "1.0.0",
+                "path": "/api/v1",
+                "status": "current",
+                "released": "2024-02-01"
+            }
+        ],
+        "deprecation_policy": {
+            "notice_period_days": 180,
+            "headers": ["Sunset", "Deprecation"]
+        }
     }
 
 

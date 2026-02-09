@@ -10,6 +10,7 @@ import {
   TrendingDown,
   Target
 } from 'lucide-react'
+import { fetchWithTimeout } from '@/services/api'
 
 export function InsightsTab() {
   return (
@@ -35,7 +36,7 @@ function TurnaroundTimeCard() {
   const { data, isLoading } = useQuery({
     queryKey: ['analytics-turnaround'],
     queryFn: async () => {
-      const res = await fetch('/api/v1/analytics/turnaround-time')
+      const res = await fetchWithTimeout('/api/v1/analytics/turnaround-time')
       return res.json()
     },
     staleTime: 300000,
@@ -122,7 +123,7 @@ function CrossMissionCard() {
   const { data, isLoading } = useQuery({
     queryKey: ['analytics-cross-mission'],
     queryFn: async () => {
-      const res = await fetch('/api/v1/analytics/cross-mission')
+      const res = await fetchWithTimeout('/api/v1/analytics/cross-mission')
       return res.json()
     },
     staleTime: 300000,
@@ -200,7 +201,7 @@ function AnomalyTimelineCard() {
   const { data, isLoading } = useQuery({
     queryKey: ['analytics-anomalies'],
     queryFn: async () => {
-      const res = await fetch('/api/v1/analytics/anomaly-timeline')
+      const res = await fetchWithTimeout('/api/v1/analytics/anomaly-timeline')
       return res.json()
     },
     staleTime: 300000,
@@ -300,7 +301,7 @@ function WeatherImpactCard() {
   const { data, isLoading } = useQuery({
     queryKey: ['analytics-weather'],
     queryFn: async () => {
-      const res = await fetch('/api/v1/analytics/weather-impact?months=12')
+      const res = await fetchWithTimeout('/api/v1/analytics/weather-impact?months=12')
       return res.json()
     },
     staleTime: 600000, // 10 min

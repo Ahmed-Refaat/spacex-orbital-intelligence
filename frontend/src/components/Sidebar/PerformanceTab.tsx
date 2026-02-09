@@ -13,6 +13,7 @@ import {
   Play,
   BarChart3
 } from 'lucide-react'
+import { fetchWithTimeout, LONG_TIMEOUT } from '@/services/api'
 
 export function PerformanceTab() {
   return (
@@ -66,7 +67,7 @@ function LatencyMetricsCard() {
   const { data, isLoading } = useQuery({
     queryKey: ['performance-stats'],
     queryFn: async () => {
-      const res = await fetch('/api/v1/performance/stats')
+      const res = await fetchWithTimeout('/api/v1/performance/stats')
       return res.json()
     },
     refetchInterval: 5000, // Every 5 seconds
@@ -150,7 +151,7 @@ function ThroughputCard() {
   const { data } = useQuery({
     queryKey: ['performance-throughput'],
     queryFn: async () => {
-      const res = await fetch('/api/v1/performance/throughput/current')
+      const res = await fetchWithTimeout('/api/v1/performance/throughput/current')
       return res.json()
     },
     refetchInterval: 5000,
@@ -203,7 +204,7 @@ function CachePerformanceCard() {
   const { data } = useQuery({
     queryKey: ['performance-stats'],
     queryFn: async () => {
-      const res = await fetch('/api/v1/performance/stats')
+      const res = await fetchWithTimeout('/api/v1/performance/stats')
       return res.json()
     },
     refetchInterval: 5000,
@@ -265,7 +266,7 @@ function SystemResourcesCard() {
   const { data } = useQuery({
     queryKey: ['performance-stats'],
     queryFn: async () => {
-      const res = await fetch('/api/v1/performance/stats')
+      const res = await fetchWithTimeout('/api/v1/performance/stats')
       return res.json()
     },
     refetchInterval: 5000,
@@ -347,7 +348,7 @@ function PropagationMethodsCard() {
   const { data } = useQuery({
     queryKey: ['performance-stats'],
     queryFn: async () => {
-      const res = await fetch('/api/v1/performance/stats')
+      const res = await fetchWithTimeout('/api/v1/performance/stats')
       return res.json()
     },
     refetchInterval: 5000,
@@ -421,9 +422,9 @@ function BenchmarkCard() {
   const runBenchmark = async () => {
     setRunning(true)
     try {
-      const res = await fetch('/api/v1/performance/benchmark?satellite_count=100&runs=3', {
+      const res = await fetchWithTimeout('/api/v1/performance/benchmark?satellite_count=100&runs=3', {
         method: 'POST'
-      })
+      }, LONG_TIMEOUT)
       const data = await res.json()
       setResults(data)
     } catch (error) {

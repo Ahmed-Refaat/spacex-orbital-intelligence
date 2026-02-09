@@ -4,6 +4,13 @@ import { useStore } from '@/stores/useStore'
 import { simulateDeorbit } from '@/services/api'
 import { PlayCircle, RotateCcw, AlertTriangle, Sun, Radio } from 'lucide-react'
 
+// Types for simulation results
+interface DeorbitResult {
+  initial_altitude_km: number
+  estimated_reentry_hours: number
+  trajectory_sample: Array<{ altitude_km: number; time_hours: number }>
+}
+
 export function SimulationTab() {
   const { selectedSatelliteId } = useStore()
 
@@ -187,8 +194,8 @@ function LinkBudgetCard({ satelliteId }: { satelliteId: string | null }) {
 function DeorbitSimulation({ satelliteId }: { satelliteId: string | null }) {
   const [deltaV, setDeltaV] = useState(0.1)
   
-  const mutation = useMutation({
-    mutationFn: () => simulateDeorbit(satelliteId!, deltaV),
+  const mutation = useMutation<DeorbitResult>({
+    mutationFn: () => simulateDeorbit(satelliteId!, deltaV) as Promise<DeorbitResult>,
   })
 
   if (!satelliteId) {

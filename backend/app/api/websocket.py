@@ -1,14 +1,15 @@
 """WebSocket endpoint for real-time satellite positions."""
 import asyncio
 import json
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from typing import Set
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query, status
+from typing import Set, Optional
 import structlog
 
 from app.services.orbital_engine import orbital_engine
 from app.services.tle_service import tle_service
 from app.services.mock_satellites import mock_generator
 from app.core.config import get_settings
+from app.core.security import get_valid_api_key
 
 logger = structlog.get_logger()
 router = APIRouter()
@@ -110,9 +111,70 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 
+async def verify_websocket_token(websocket: WebSocket) -> bool:
+    """
+    Verify WebSocket connection authentication.
+    
+    Supports:
+    - Query parameter: ?token=API_KEY
+    - Header: X-API-Key (via Sec-WebSocket-Protocol)
+    
+    Returns True if authenticated or if auth is disabled in dev mode.
+    """
+    settings = get_settings()
+    valid_key = get_valid_api_key()
+    
+    # In development without API key, allow all connections
+    if not valid_key:
+        logger.warning("WebSocket auth disabled - no API key configured")
+        return True
+    
+    # Check query parameter
+    token = websocket.query_params.get("token")
+    if token and token == valid_key:
+        return True
+    
+    # Check subprotocol (can carry auth in some WebSocket clients)
+    # Format: "auth-{api_key}"
+    protocols = websocket.headers.get("sec-websocket-protocol", "")
+    for protocol in protocols.split(","):
+        protocol = protocol.strip()
+        if protocol.startswith("auth-"):
+            provided_key = protocol[5:]
+            if provided_key == valid_key:
+                return True
+    
+    return False
+
+
 @router.websocket("/ws/positions")
-async def websocket_positions(websocket: WebSocket):
-    """WebSocket endpoint for real-time satellite positions."""
+async def websocket_positions(
+    websocket: WebSocket,
+    token: Optional[str] = Query(None, description="API key for authentication")
+):
+    """
+    WebSocket endpoint for real-time satellite positions.
+    
+    **Authentication:**
+    - Query parameter: ws://host/ws/positions?token=YOUR_API_KEY
+    - In production, unauthenticated connections are rejected
+    
+    **Messages sent:**
+    - `{type: "positions", count: N, source: "tle"|"simulated", data: [...]}`
+    - `{type: "satellite", data: {...}}` (on subscribe)
+    - `{type: "pong"}` (keepalive response)
+    
+    **Messages received:**
+    - `{type: "subscribe", satellite_id: "..."}` - Get specific satellite updates
+    - `{type: "ping"}` - Keepalive ping
+    """
+    # Verify authentication
+    if not await verify_websocket_token(websocket):
+        logger.warning("WebSocket auth failed", 
+                      client=websocket.client.host if websocket.client else "unknown")
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+    
     await manager.connect(websocket)
     
     try:

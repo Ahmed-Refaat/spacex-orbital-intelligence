@@ -16,6 +16,7 @@ import {
   Radio,
   RefreshCw
 } from 'lucide-react'
+import { fetchWithTimeout } from '@/services/api'
 
 export function OpsTab() {
   return (
@@ -50,14 +51,14 @@ function MonitoringStatusCard() {
   const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ['monitoring-summary'],
     queryFn: async () => {
-      const res = await fetch('/api/v1/monitoring/summary')
+      const res = await fetchWithTimeout('/api/v1/monitoring/summary')
       return res.json()
     },
     refetchInterval: 60000, // Auto-refresh every minute
   })
 
   const handleManualCheck = async () => {
-    await fetch('/api/v1/monitoring/check', { method: 'POST' })
+    await fetchWithTimeout('/api/v1/monitoring/check', { method: 'POST' })
     refetch()
   }
 
@@ -254,7 +255,7 @@ function FleetHealthCard() {
   const { data, isLoading, error } = useQuery({
     queryKey: ['ops-fleet-health'],
     queryFn: async () => {
-      const res = await fetch('/api/v1/ops/fleet/health')
+      const res = await fetchWithTimeout('/api/v1/ops/fleet/health')
       return res.json()
     },
     refetchInterval: 60000,
@@ -365,7 +366,7 @@ function TLEFreshnessCard() {
   const { data } = useQuery({
     queryKey: ['ops-fleet-health'],
     queryFn: async () => {
-      const res = await fetch('/api/v1/ops/fleet/health')
+      const res = await fetchWithTimeout('/api/v1/ops/fleet/health')
       return res.json()
     },
     staleTime: 60000,
@@ -403,7 +404,7 @@ function ConjunctionWorkflowCard() {
   const { data, isLoading } = useQuery({
     queryKey: ['ops-conjunction-workflow'],
     queryFn: async () => {
-      const res = await fetch('/api/v1/ops/conjunctions/workflow')
+      const res = await fetchWithTimeout('/api/v1/ops/conjunctions/workflow')
       return res.json()
     },
     refetchInterval: 300000,
@@ -506,7 +507,7 @@ function DecisionRecommendationsCard() {
   const { data: healthData } = useQuery({
     queryKey: ['ops-fleet-health'],
     queryFn: async () => {
-      const res = await fetch('/api/v1/ops/fleet/health')
+      const res = await fetchWithTimeout('/api/v1/ops/fleet/health')
       return res.json()
     },
     staleTime: 60000,
@@ -515,7 +516,7 @@ function DecisionRecommendationsCard() {
   const { data: conjunctionData } = useQuery({
     queryKey: ['ops-conjunction-workflow'],
     queryFn: async () => {
-      const res = await fetch('/api/v1/ops/conjunctions/workflow')
+      const res = await fetchWithTimeout('/api/v1/ops/conjunctions/workflow')
       return res.json()
     },
     staleTime: 300000,
@@ -607,7 +608,7 @@ function CoverageAnalysisCard() {
   const { data, isLoading } = useQuery({
     queryKey: ['ops-coverage'],
     queryFn: async () => {
-      const res = await fetch('/api/v1/ops/coverage/analysis')
+      const res = await fetchWithTimeout('/api/v1/ops/coverage/analysis')
       return res.json()
     },
     staleTime: 300000,

@@ -1,8 +1,9 @@
 """Risk analysis and orbital intelligence endpoints."""
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from typing import Optional
 
 from app.services.orbital_engine import orbital_engine
+from app.core.security import limiter
 from app.services.tle_service import tle_service
 from app.services.cache import cache
 from app.services.conjunction_service import (
@@ -16,7 +17,9 @@ router = APIRouter(prefix="/analysis", tags=["Analysis"])
 
 
 @router.get("/risk/{satellite_id}")
+@limiter.limit("30/minute")
 async def get_satellite_risk(
+    request: Request,
     satellite_id: str,
     hours_ahead: int = Query(24, ge=1, le=72)
 ):
@@ -335,7 +338,9 @@ async def get_cdm_conjunctions(
 
 
 @router.get("/conjunctions/calculate")
+@limiter.limit("30/minute")
 async def calculate_conjunction(
+    request: Request,
     sat1_id: str = Query(..., description="First satellite NORAD ID"),
     sat2_id: str = Query(..., description="Second satellite NORAD ID"),
     hours_ahead: int = Query(24, ge=1, le=72)
@@ -420,7 +425,9 @@ async def get_satellite_passes(
 
 
 @router.get("/eclipse/{satellite_id}")
+@limiter.limit("30/minute")
 async def predict_eclipse(
+    request: Request,
     satellite_id: str,
     hours_ahead: int = Query(24, ge=1, le=72)
 ):
@@ -513,7 +520,9 @@ async def predict_eclipse(
 
 
 @router.get("/link-budget/{satellite_id}")
+@limiter.limit("30/minute")
 async def calculate_link_budget(
+    request: Request,
     satellite_id: str,
     ground_station: str = Query(..., description="Ground station name"),
     frequency_ghz: float = Query(12.0, ge=1, le=30, description="Downlink frequency in GHz")
@@ -614,7 +623,9 @@ async def calculate_link_budget(
 
 
 @router.get("/alerts")
+@limiter.limit("20/minute")
 async def get_collision_alerts(
+    request: Request,
     min_risk: float = Query(0.3, ge=0, le=1.0),
     limit: int = Query(20, ge=1, le=100)
 ):
@@ -693,7 +704,9 @@ async def get_collision_alerts(
 
 
 @router.post("/simulate/deorbit")
+@limiter.limit("10/minute")
 async def simulate_deorbit(
+    request: Request,
     satellite_id: str,
     delta_v: float = Query(0.1, ge=0.01, le=1.0, description="Deorbit burn delta-v in km/s")
 ):
