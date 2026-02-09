@@ -17,7 +17,7 @@ from app.services.spacex_api import spacex_client
 from app.services.orbital_engine import orbital_engine
 from app.services.spice_client import spice_client
 from app.services import async_orbital_engine
-from app.api import satellites, analysis, launches, websocket, ops, analytics, launches_live, cdm, export, monitoring, performance, rate_limits, launch_simulation
+from app.api import satellites, analysis, launches, websocket, ops, analytics, launches_live, cdm, export, monitoring, performance, rate_limits, launch_simulation, data_source
 
 # Configure logging
 structlog.configure(
@@ -228,6 +228,7 @@ app.include_router(monitoring.router, prefix=settings.api_prefix)
 app.include_router(performance.router, prefix=settings.api_prefix)
 app.include_router(rate_limits.router, prefix=settings.api_prefix)
 app.include_router(launch_simulation.router, prefix=settings.api_prefix)
+app.include_router(data_source.router, prefix=settings.api_prefix)
 app.include_router(websocket.router)
 
 
