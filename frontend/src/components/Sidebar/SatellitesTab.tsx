@@ -32,6 +32,34 @@ export function SatellitesTab() {
     <div className="space-y-4">
       {/* Controls */}
       <div className="space-y-3">
+        {/* Toggles - Auto Rotate, Show Orbits, NASA Texture */}
+        <div className="flex gap-2">
+          <button
+            onClick={() => setAutoRotate(!autoRotate)}
+            className={`flex-1 py-1.5 text-xs rounded-lg transition ${
+              autoRotate ? 'bg-spacex-accent text-white' : 'bg-spacex-dark text-gray-400'
+            }`}
+          >
+            Auto Rotate
+          </button>
+          <button
+            onClick={() => setShowOrbits(!showOrbits)}
+            className={`flex-1 py-1.5 text-xs rounded-lg transition ${
+              showOrbits ? 'bg-spacex-accent text-white' : 'bg-spacex-dark text-gray-400'
+            }`}
+          >
+            Show Orbits
+          </button>
+          <button
+            onClick={() => setShowEarthTexture(!showEarthTexture)}
+            className={`flex-1 py-1.5 text-xs rounded-lg transition ${
+              showEarthTexture ? 'bg-cyan-600/30 text-cyan-300 border border-cyan-500/30' : 'bg-spacex-dark text-gray-400'
+            }`}
+          >
+            {showEarthTexture ? '🌍 NASA' : '🔵 Minimal'}
+          </button>
+        </div>
+
         {/* Search */}
         <div className="relative">
           <input
@@ -68,36 +96,6 @@ export function SatellitesTab() {
             className="w-full accent-spacex-accent"
           />
         </div>
-
-        {/* Toggles */}
-        <div className="flex gap-2">
-          <button
-            onClick={() => setAutoRotate(!autoRotate)}
-            className={`flex-1 py-1.5 text-xs rounded-lg transition ${
-              autoRotate ? 'bg-spacex-accent text-white' : 'bg-spacex-dark text-gray-400'
-            }`}
-          >
-            Auto Rotate
-          </button>
-          <button
-            onClick={() => setShowOrbits(!showOrbits)}
-            className={`flex-1 py-1.5 text-xs rounded-lg transition ${
-              showOrbits ? 'bg-spacex-accent text-white' : 'bg-spacex-dark text-gray-400'
-            }`}
-          >
-            Show Orbits
-          </button>
-        </div>
-        
-        {/* Earth texture toggle */}
-        <button
-          onClick={() => setShowEarthTexture(!showEarthTexture)}
-          className={`w-full py-1.5 text-xs rounded-lg transition ${
-            showEarthTexture ? 'bg-cyan-600/30 text-cyan-300 border border-cyan-500/30' : 'bg-spacex-dark text-gray-400'
-          }`}
-        >
-          {showEarthTexture ? '🌍 NASA Texture' : '🔵 Minimal Globe'}
-        </button>
       </div>
 
       {/* Selected satellite details */}

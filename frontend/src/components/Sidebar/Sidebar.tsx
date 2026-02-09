@@ -49,24 +49,26 @@ export function Sidebar() {
 
       {/* Sidebar content */}
       <div className="w-80 md:w-96 h-full bg-spacex-card/95 backdrop-blur-lg border-l border-spacex-border flex flex-col">
-        {/* Tabs */}
-        <div className="flex border-b border-spacex-border">
-          {tabs.map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`
-                flex-1 py-3 px-2 flex flex-col items-center gap-1 transition
-                ${activeTab === tab.id 
-                  ? 'bg-spacex-accent/20 text-spacex-accent border-b-2 border-spacex-accent' 
-                  : 'text-gray-400 hover:text-white hover:bg-white/5'
-                }
-              `}
-            >
-              <tab.icon size={18} />
-              <span className="text-xs">{tab.label}</span>
-            </button>
-          ))}
+        {/* Tabs - Horizontal scroll if overflow */}
+        <div className="overflow-x-auto border-b border-spacex-border scrollbar-thin scrollbar-thumb-spacex-border scrollbar-track-transparent">
+          <div className="flex min-w-max">
+            {tabs.map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`
+                  flex-1 min-w-[70px] py-3 px-2 flex flex-col items-center gap-1 transition whitespace-nowrap
+                  ${activeTab === tab.id 
+                    ? 'bg-spacex-accent/20 text-spacex-accent border-b-2 border-spacex-accent' 
+                    : 'text-gray-400 hover:text-white hover:bg-white/5'
+                  }
+                `}
+              >
+                <tab.icon size={18} />
+                <span className="text-xs">{tab.label}</span>
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Tab content */}
