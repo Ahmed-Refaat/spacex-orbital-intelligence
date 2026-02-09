@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # SPICE Service - OMM/SGP4 Propagation Engine
   spice:
