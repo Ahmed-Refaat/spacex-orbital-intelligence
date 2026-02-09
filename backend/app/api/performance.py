@@ -45,7 +45,7 @@ async def get_performance_stats():
         
         # Cache stats (if available)
         cache_stats = {
-            "enabled": cache.redis is not None,
+            "enabled": cache.is_connected,
             "hit_rate": 0.0,  # TODO: Track cache hits/misses
             "keys_count": 0
         }
