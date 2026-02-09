@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useStore } from '@/stores/useStore'
 import { simulateDeorbit } from '@/services/api'
-import { PlayCircle, RotateCcw, AlertTriangle, Sun, Radio } from 'lucide-react'
+import { PlayCircle, RotateCcw, AlertTriangle, Sun, Radio, Info } from 'lucide-react'
 
 // Types for simulation results
 interface DeorbitResult {
@@ -317,9 +317,9 @@ function LaunchSimulator() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          thrust_N: 7500000,
+          thrust_N: 8000000,  // Updated to match backend defaults
           thrust_variance: params.thrust_variance,
-          Isp: 310,
+          Isp: 360,  // Updated to match backend defaults
           n_runs: params.n_runs
         })
       })
@@ -328,6 +328,7 @@ function LaunchSimulator() {
       
       if (data.status === 'complete') {
         setResult(data)
+        setRunning(false)
       } else if (data.status === 'running') {
         // Poll for results
         const simId = data.sim_id
@@ -356,19 +357,39 @@ function LaunchSimulator() {
     <div className="bg-spacex-dark rounded-lg p-4">
       <div className="flex items-center gap-2 mb-3">
         <PlayCircle size={16} className="text-orange-400" />
-        <h3 className="font-medium">Launch Simulator (Monte-Carlo)</h3>
+        <h3 className="font-medium">Launch Simulator</h3>
       </div>
       
-      <p className="text-xs text-gray-400 mb-4">
-        Probabilistic launch simulation with parameter uncertainty. 
-        Tests {params.n_runs.toLocaleString()} scenarios to predict success rate.
-      </p>
+      {/* Explanation */}
+      <div className="mb-4 p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
+        <div className="flex items-start gap-2 mb-2">
+          <Info size={14} className="text-blue-400 mt-0.5 flex-shrink-0" />
+          <div className="text-xs text-blue-200">
+            <strong className="text-blue-300">Simulation Monte-Carlo</strong>
+          </div>
+        </div>
+        <div className="text-xs text-gray-300 space-y-1.5 ml-5">
+          <p>
+            <strong className="text-white">Fusée:</strong> Single-Stage-To-Orbit (SSTO) théorique<br />
+            <span className="text-gray-400">• Thrust: 8 MN • Isp: 360s • Masse: 615t</span>
+          </p>
+          <p>
+            <strong className="text-white">Mission:</strong> Atteindre 180km d'altitude + 7.5 km/s de vitesse orbitale
+          </p>
+          <p>
+            <strong className="text-white">Monte-Carlo:</strong> Teste {params.n_runs.toLocaleString()}x avec incertitudes aléatoires (±{(params.thrust_variance * 100).toFixed(0)}% thrust, ±3% Isp, ±2% masse)
+          </p>
+          <p className="text-yellow-300/80">
+            ⚠️ SSTO est physiquement très difficile - success rate faible est réaliste
+          </p>
+        </div>
+      </div>
 
       {/* Parameters */}
       <div className="space-y-3 mb-4">
         <div>
           <label className="text-xs text-gray-400 mb-1 block">
-            Thrust Variance (±{(params.thrust_variance * 100).toFixed(0)}%)
+            Incertitude Thrust (±{(params.thrust_variance * 100).toFixed(0)}%)
           </label>
           <input
             type="range"
@@ -384,7 +405,7 @@ function LaunchSimulator() {
 
         <div>
           <label className="text-xs text-gray-400 mb-1 block">
-            Simulations: {params.n_runs.toLocaleString()}
+            Nombre de tests: {params.n_runs.toLocaleString()}
           </label>
           <input
             type="range"
@@ -410,32 +431,39 @@ function LaunchSimulator() {
         }`}
       >
         <PlayCircle size={16} />
-        {running ? 'Running simulation...' : 'Run Simulation'}
+        {running ? 'Simulation en cours...' : 'Lancer Simulation'}
       </button>
 
       {/* Results */}
       {result && result.status === 'complete' && (
         <div className="mt-4 space-y-3">
           <div className="bg-spacex-card rounded p-3">
-            <div className="text-xs text-gray-400 mb-1">Success Rate</div>
+            <div className="text-xs text-gray-400 mb-1">Taux de Succès</div>
             <div className={`text-2xl font-bold ${
-              result.success_rate > 0.9 ? 'text-green-400' :
-              result.success_rate > 0.7 ? 'text-yellow-400' : 'text-red-400'
+              (result.success_rate || 0) > 0.9 ? 'text-green-400' :
+              (result.success_rate || 0) > 0.7 ? 'text-yellow-400' : 
+              (result.success_rate || 0) > 0 ? 'text-orange-400' : 'text-red-400'
             }`}>
-              {(result.success_rate * 100).toFixed(1)}%
+              {typeof result.success_rate === 'number' ? (result.success_rate * 100).toFixed(1) : '0.0'}%
             </div>
             <div className="text-xs text-gray-500 mt-1">
-              {result.success_count} / {result.total_runs} launches successful
+              {result.success_count || 0} / {result.total_runs || 0} lancements réussis
             </div>
           </div>
 
           {/* Failure Modes */}
           {result.failure_modes && Object.keys(result.failure_modes).length > 0 && (
             <div className="bg-spacex-card rounded p-3">
-              <div className="text-xs text-gray-400 mb-2">Failure Modes</div>
+              <div className="text-xs text-gray-400 mb-2">Modes d'Échec</div>
               {Object.entries(result.failure_modes).map(([mode, count]: [string, any]) => (
                 <div key={mode} className="flex justify-between text-xs mb-1">
-                  <span className="text-gray-500">{mode.replace(/_/g, ' ')}</span>
+                  <span className="text-gray-500">
+                    {mode === 'fuel_depletion' ? '⛽ Plus de carburant' :
+                     mode === 'insufficient_velocity' ? '🚀 Vitesse insuffisante' :
+                     mode === 'structural_failure' ? '💥 Rupture structure' :
+                     mode === 'crashed' ? '💀 Crash' :
+                     mode.replace(/_/g, ' ')}
+                  </span>
                   <span className="text-white">{count}</span>
                 </div>
               ))}
@@ -443,7 +471,7 @@ function LaunchSimulator() {
           )}
 
           <div className="text-xs text-gray-500">
-            Runtime: {result.runtime_seconds?.toFixed(2)}s
+            Runtime: {result.runtime_seconds?.toFixed(2) || '0.00'}s
           </div>
         </div>
       )}

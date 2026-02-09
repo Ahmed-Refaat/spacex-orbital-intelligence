@@ -31,7 +31,7 @@ export function SatellitesTab() {
   return (
     <div className="space-y-4">
       {/* Controls */}
-      <div className="space-y-3">
+      <div className="space-y-5">
         {/* Toggles - Auto Rotate, Show Orbits, NASA Texture */}
         <div className="flex gap-2">
           <button
@@ -59,6 +59,9 @@ export function SatellitesTab() {
             {showEarthTexture ? '🌍 NASA' : '🔵 Minimal'}
           </button>
         </div>
+
+        {/* Separator */}
+        <div className="border-t border-spacex-border/50"></div>
 
         {/* Search */}
         <div className="relative">
