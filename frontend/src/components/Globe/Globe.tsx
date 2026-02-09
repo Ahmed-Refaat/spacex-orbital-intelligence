@@ -5,10 +5,12 @@ import { Earth } from './Earth'
 import { Satellites, SelectedSatelliteHighlight } from './Satellites'
 import { OrbitPath } from './OrbitPath'
 import { useStore } from '@/stores/useStore'
+import { useOrbitControls } from '@/hooks/useOrbitControls'
 import { Maximize2, Minimize2 } from 'lucide-react'
 
 export function Globe() {
   const { satellites, autoRotate } = useStore()
+  const { controlsRef, zoom } = useOrbitControls()
 
   return (
     <div className="canvas-container w-full h-full">
@@ -47,12 +49,7 @@ export function Globe() {
 
         {/* Controls */}
         <OrbitControls 
-          ref={(controls) => {
-            if (controls) {
-              // @ts-ignore - store ref for zoom buttons
-              window.__orbitControls = controls
-            }
-          }}
+          ref={controlsRef}
           enablePan={false}
           minDistance={8}
           maxDistance={50}
@@ -62,12 +59,12 @@ export function Globe() {
       </Canvas>
 
       {/* Overlay UI */}
-      <GlobeOverlay />
+      <GlobeOverlay zoom={zoom} />
     </div>
   )
 }
 
-function GlobeOverlay() {
+function GlobeOverlay({ zoom }: { zoom: (delta: number) => void }) {
   const { lastUpdate, stats, isFullscreen, toggleFullscreen } = useStore()
   
   // Listen for fullscreen changes (ESC key, etc.)
@@ -85,18 +82,6 @@ function GlobeOverlay() {
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange)
   }, [])
 
-  const handleZoom = (delta: number) => {
-    // @ts-ignore
-    const controls = window.__orbitControls
-    if (controls) {
-      const camera = controls.object
-      const currentDistance = camera.position.length()
-      const newDistance = Math.max(8, Math.min(50, currentDistance + delta))
-      camera.position.setLength(newDistance)
-      controls.update()
-    }
-  }
-
   // Format number in scientific notation
   const formatScientific = (num: number) => {
     if (num === 0) return '0'
@@ -113,13 +98,13 @@ function GlobeOverlay() {
       {/* Zoom controls */}
       <div className="absolute top-4 right-4 flex flex-col gap-1">
         <button
-          onClick={() => handleZoom(-3)}
+          onClick={() => zoom(-3)}
           className="w-10 h-10 glass rounded-lg flex items-center justify-center text-xl font-bold hover:bg-white/10 transition"
         >
           +
         </button>
         <button
-          onClick={() => handleZoom(3)}
+          onClick={() => zoom(3)}
           className="w-10 h-10 glass rounded-lg flex items-center justify-center text-xl font-bold hover:bg-white/10 transition"
         >
           −

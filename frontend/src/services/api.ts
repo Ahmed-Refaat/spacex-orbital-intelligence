@@ -21,6 +21,21 @@ async function fetchJson<T>(url: string): Promise<T> {
   return response.json()
 }
 
+// Batch fetch - Parallel API calls to reduce initial load time
+export async function getInitialData() {
+  const [positions, health, launches] = await Promise.all([
+    getAllPositions(),
+    getHealth(),
+    getLaunches(20, false)
+  ])
+  
+  return {
+    positions,
+    health,
+    launches
+  }
+}
+
 // Satellites
 export async function getSatellites(limit = 100, offset = 0) {
   return fetchJson<{

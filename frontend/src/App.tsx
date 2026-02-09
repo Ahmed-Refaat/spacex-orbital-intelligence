@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Globe } from '@/components/Globe'
 import { Sidebar } from '@/components/Sidebar'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { useStore } from '@/stores/useStore'
 
@@ -46,7 +47,9 @@ function AppContent() {
 
       {/* 3D Globe */}
       <main className="absolute inset-0">
-        <Globe />
+        <ErrorBoundary>
+          <Globe />
+        </ErrorBoundary>
       </main>
 
       {/* Sidebar */}
