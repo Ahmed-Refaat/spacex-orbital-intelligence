@@ -11,7 +11,7 @@ Register for free at: https://www.space-track.org/auth/createAccount
 """
 import httpx
 from datetime import datetime, timezone, timedelta
-from typing import Optional
+from typing import Optional, Literal
 from dataclasses import dataclass
 import os
 
