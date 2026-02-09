@@ -221,6 +221,88 @@ class AnisePlanetaryService:
             dt.microsecond // 1000  # nanos from millis
         )
     
+    def calculate_aer(
+        self,
+        satellite_position: Tuple[float, float, float],
+        satellite_velocity: Tuple[float, float, float],
+        ground_station_lat: float,
+        ground_station_lon: float,
+        ground_station_alt: float,
+        epoch: datetime
+    ) -> Tuple[float, float, float]:
+        """
+        Calculate Azimuth, Elevation, Range from ground station to satellite.
+        
+        Args:
+            satellite_position: (x, y, z) in km (ECI J2000 frame)
+            satellite_velocity: (vx, vy, vz) in km/s (ECI J2000 frame)
+            ground_station_lat: Latitude in degrees (-90 to +90)
+            ground_station_lon: Longitude in degrees (-180 to +180)
+            ground_station_alt: Altitude in km above sea level
+            epoch: Time of calculation (UTC)
+        
+        Returns:
+            (azimuth_deg, elevation_deg, range_km)
+            - azimuth: 0-360° (North = 0°, East = 90°)
+            - elevation: -90 to +90° (horizon = 0°)
+            - range: Distance in km
+        """
+        if not self.is_ready():
+            raise RuntimeError("ANISE not ready")
+        
+        start = time.perf_counter()
+        
+        # Convert datetime to ANISE epoch
+        anise_epoch = self._datetime_to_epoch(epoch)
+        
+        # Create ground station orbit (fixed to Earth surface)
+        from anise.astro import Orbit
+        from anise.constants import Frames
+        
+        iau_earth = self._almanac.frame_info(Frames.IAU_EARTH_FRAME)
+        station_orbit = Orbit.from_latlongalt(
+            ground_station_lat,
+            ground_station_lon,
+            ground_station_alt,
+            anise_epoch,
+            iau_earth
+        )
+        
+        # Create satellite orbit from Cartesian state
+        eme2k = self._almanac.frame_info(Frames.EARTH_J2000)
+        satellite_orbit = Orbit.from_cartesian(
+            satellite_position[0],
+            satellite_position[1],
+            satellite_position[2],
+            satellite_velocity[0],
+            satellite_velocity[1],
+            satellite_velocity[2],
+            anise_epoch,
+            eme2k
+        )
+        
+        # Calculate AER using ANISE
+        aer = self._almanac.azimuth_elevation_range_sez(
+            satellite_orbit,
+            station_orbit
+        )
+        
+        duration_ms = (time.perf_counter() - start) * 1000
+        
+        logger.debug(
+            "aer_calculation",
+            azimuth=round(aer.azimuth_deg, 2),
+            elevation=round(aer.elevation_deg, 2),
+            range_km=round(aer.range_km, 2),
+            duration_ms=round(duration_ms, 3)
+        )
+        
+        return (
+            float(aer.azimuth_deg),
+            float(aer.elevation_deg),
+            float(aer.range_km)
+        )
+    
     def _get_frame_id(self, body: str):
         """Map body name to ANISE frame constant."""
         body_upper = body.upper()
