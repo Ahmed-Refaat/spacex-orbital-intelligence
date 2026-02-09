@@ -18,10 +18,9 @@
  */
 
 import { useRef, useCallback } from 'react'
-import type { OrbitControls } from '@react-three/drei'
 
 export function useOrbitControls() {
-  const controlsRef = useRef<OrbitControls>(null)
+  const controlsRef = useRef<any>(null)
   
   const zoom = useCallback((delta: number) => {
     if (!controlsRef.current) return

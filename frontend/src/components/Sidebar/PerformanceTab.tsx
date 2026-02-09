@@ -1,7 +1,6 @@
-import { useQuery } from '@tantml:parameter>@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { useState, useEffect } from 'react'
 import { 
-  Activity, 
   Cpu, 
   Database, 
   Zap,
