@@ -14,20 +14,6 @@ export default defineConfig({
     include: ['react', 'react-dom', 'scheduler'],
   },
   build: {
-    rollupOptions: {
-      output: {
-        manualChunks: {
-          // Three.js and 3D visualization libs (keep react deps together)
-          'three': ['three', '@react-three/fiber', '@react-three/drei'],
-          // Charts library
-          'charts': ['recharts'],
-          // Core React libraries (keep all React deps in same chunk)
-          'vendor': ['react', 'react-dom', 'scheduler', 'zustand', '@tanstack/react-query'],
-          // Zod validation
-          'validation': ['zod'],
-        },
-      },
-    },
     chunkSizeWarningLimit: 1000, // Warn if chunk > 1MB
   },
   server: {
