@@ -5,6 +5,7 @@ import { LaunchesTab } from './LaunchesTab'
 import { SimulationTab } from './SimulationTab'
 import { OpsTab } from './OpsTab'
 import { InsightsTab } from './InsightsTab'
+import { PerformanceTab } from './PerformanceTab'
 import { 
   Satellite, 
   BarChart3, 
@@ -12,6 +13,7 @@ import {
   PlayCircle,
   Activity,
   Lightbulb,
+  Zap,
   ChevronLeft,
   ChevronRight
 } from 'lucide-react'
@@ -23,6 +25,7 @@ const tabs = [
   { id: 'analysis' as const, label: 'Analysis', icon: BarChart3 },
   { id: 'launches' as const, label: 'Launches', icon: Rocket },
   { id: 'simulation' as const, label: 'Sim', icon: PlayCircle },
+  { id: 'performance' as const, label: 'Perf', icon: Zap },
 ]
 
 export function Sidebar() {
@@ -71,6 +74,7 @@ export function Sidebar() {
           {activeTab === 'analysis' && <AnalysisTab />}
           {activeTab === 'launches' && <LaunchesTab />}
           {activeTab === 'simulation' && <SimulationTab />}
+          {activeTab === 'performance' && <PerformanceTab />}
         </div>
       </div>
     </div>

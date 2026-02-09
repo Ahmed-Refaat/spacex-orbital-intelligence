@@ -27,6 +27,7 @@ circuitbreaker==1.4.0
 
 # XML/OMM parsing
 lxml==5.1.0
+defusedxml==0.7.1  # XXE protection
 
 # Validation & serialization
 pydantic==2.6.1

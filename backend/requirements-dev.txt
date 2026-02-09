@@ -1,0 +1,38 @@
+# Development & Testing Dependencies
+
+# Testing
+pytest==8.0.0
+pytest-cov==4.1.0
+pytest-asyncio==0.23.4
+pytest-mock==3.12.0
+pytest-env==1.1.3
+httpx==0.26.0  # For testing async clients
+faker==22.6.0  # For generating test data
+
+# Code Quality
+black==24.1.1  # Code formatting
+ruff==0.2.0  # Fast Python linter
+mypy==1.8.0  # Type checking
+types-redis==4.6.0.20240106
+types-requests==2.31.0.20240125
+
+# Security
+bandit==1.7.7  # Security linting
+safety==3.0.1  # Dependency vulnerability scanner
+detect-secrets==1.4.0  # Secrets detection
+
+# Pre-commit
+pre-commit==3.6.0
+
+# Load Testing
+locust==2.20.0  # Load testing framework
+
+# Documentation
+mkdocs==1.5.3  # Documentation generator
+mkdocs-material==9.5.6  # Material theme
+mkdocstrings[python]==0.24.0  # API docs from docstrings
+
+# Development Tools
+ipython==8.20.0  # Better REPL
+ipdb==0.13.13  # Debugger
+watchdog==4.0.0  # File watcher for auto-reload

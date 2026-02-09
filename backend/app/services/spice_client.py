@@ -19,6 +19,8 @@ from dataclasses import dataclass
 import structlog
 from circuitbreaker import circuit
 
+from app.core.rate_limiter import spice_rate_limiter
+
 logger = structlog.get_logger()
 
 
@@ -153,15 +155,28 @@ class SpiceClient:
         """
         Check if SPICE service is available.
         
+        Rate limited to max 1 check per 30 seconds to avoid API abuse.
         Circuit breaker protects against cascade failures.
         Opens after 5 consecutive failures, recovers after 60s.
         
         Returns:
             True if service is healthy
         """
+        # Rate limiting: Use cached result if available
+        if not spice_rate_limiter.health_check.can_call():
+            cached_result = spice_rate_limiter.health_check.get_cached()
+            if cached_result is not None:
+                logger.debug("SPICE health check: using cached result")
+                self.available = cached_result
+                return cached_result
+        
+        # Make actual call
         try:
             response = await self.client.get("/health")
             self.available = response.status_code == 200
+            
+            # Cache the result
+            spice_rate_limiter.health_check.record_call(self.available)
             
             if self.available:
                 logger.debug("SPICE health check passed")
@@ -176,6 +191,8 @@ class SpiceClient:
         except Exception as e:
             self.available = False
             logger.warning("SPICE health check error", error=str(e))
+            # Cache the failure result too
+            spice_rate_limiter.health_check.record_call(False)
             return False
     
     @circuit(failure_threshold=3, recovery_timeout=30, name="spice_load_omm")
@@ -188,6 +205,8 @@ class SpiceClient:
         """
         Load OMM into SPICE engine.
         
+        Rate limited to 5 uploads per minute to avoid API abuse.
+        
         Args:
             omm_content: OMM XML or JSON string
             format: 'xml' or 'json'
@@ -198,8 +217,21 @@ class SpiceClient:
         
         Raises:
             SpiceServiceUnavailable: Service not available
-            SpiceClientError: Loading failed
+            SpiceClientError: Loading failed or rate limited
         """
+        # Check rate limit
+        if not spice_rate_limiter.omm_load.can_call():
+            stats = spice_rate_limiter.omm_load.get_stats()
+            logger.warning(
+                "SPICE OMM load rate limited",
+                calls_last_minute=stats["calls_last_minute"],
+                max_allowed=stats["max_calls_per_minute"]
+            )
+            raise SpiceClientError(
+                f"Rate limit exceeded: {stats['calls_last_minute']}/{stats['max_calls_per_minute']} "
+                "uploads per minute. Please wait before uploading again."
+            )
+        
         if not self.available:
             raise SpiceServiceUnavailable(
                 "SPICE service unavailable. Run health_check() first."
@@ -235,6 +267,9 @@ class SpiceClient:
                 has_covariance=data.get("has_covariance", False),
                 source=data.get("source", "omm")
             )
+            
+            # Record successful call for rate limiting
+            spice_rate_limiter.omm_load.record_call(result)
             
             logger.info(
                 "OMM loaded into SPICE",

@@ -1,510 +1,488 @@
 """
-Launch Simulator - Monte Carlo Engine with 6-DOF Physics
+Launch Simulator - Monte Carlo Physics Engine
 
-This module implements a probabilistic launch simulator that runs thousands
-of simulations to explore parameter sensitivity and identify optimal test strategies.
-
-Architecture:
-    PhysicsEngine -> Single trajectory simulation (6-DOF)
-    MonteCarloEngine -> N parallel simulations with parameter sampling
-    SensitivityAnalyzer -> Sobol indices calculation
-
-Usage:
-    >>> engine = MonteCarloEngine()
-    >>> result = engine.run_simulation(params, n_runs=10000)
-    >>> print(f"Success rate: {result.success_rate:.1%}")
-    >>> print(f"Top parameter: {result.sensitivity[0].param}")
+Simulates rocket launch with parameter uncertainty and sensitivity analysis.
 """
-
-from dataclasses import dataclass, field
-from typing import List, Dict, Optional, Literal, Tuple, Callable
-from datetime import datetime
 import numpy as np
-import math
-from concurrent.futures import ProcessPoolExecutor, as_completed
-import multiprocessing
+from typing import List, Tuple, Optional, Dict
+from dataclasses import dataclass, field
+from datetime import datetime
+import structlog
+from concurrent.futures import ProcessPoolExecutor
+import os
 
+logger = structlog.get_logger(__name__)
 
-# ============================================================================
-# Data Models
-# ============================================================================
-
-@dataclass
-class State:
-    """State vector at a given time during trajectory simulation."""
-    time: float  # seconds since launch
-    altitude: float  # km above sea level
-    velocity: float  # km/s vertical component
-    mass: float  # kg total vehicle mass
-    acceleration: float  # m/s^2 vertical acceleration
-    
-    def is_valid(self) -> bool:
-        """Check if state is numerically stable."""
-        return all(
-            not (math.isnan(x) or math.isinf(x))
-            for x in [self.altitude, self.velocity, self.mass, self.acceleration]
-        )
-
-
-@dataclass
-class TrajectoryResult:
-    """Result of a single trajectory simulation."""
-    success: bool
-    reason: Optional[str] = None  # Failure reason if success=False
-    trajectory: List[State] = field(default_factory=list)
-    final_altitude: float = 0.0  # km
-    final_velocity: float = 0.0  # km/s
-    runtime_seconds: float = 0.0
-    
-    def is_valid(self) -> bool:
-        """Check if trajectory is numerically stable."""
-        return all(state.is_valid() for state in self.trajectory)
-
-
-@dataclass
-class ParameterDistribution:
-    """
-    Statistical distribution for a parameter.
-    
-    Examples:
-        >>> # Fixed value
-        >>> ParameterDistribution(type='fixed', value=7.5e6)
-        
-        >>> # Normal distribution
-        >>> ParameterDistribution(type='normal', mean=7.5e6, std=0.05*7.5e6)
-        
-        >>> # Uniform distribution
-        >>> ParameterDistribution(type='uniform', min=0.0, max=0.5)
-    """
-    type: Literal['fixed', 'normal', 'uniform', 'exponential']
-    
-    # For fixed
-    value: Optional[float] = None
-    
-    # For normal
-    mean: Optional[float] = None
-    std: Optional[float] = None
-    
-    # For uniform
-    min: Optional[float] = None
-    max: Optional[float] = None
-    
-    # For exponential
-    scale: Optional[float] = None
-    
-    def sample(self, n: int = 1, seed: Optional[int] = None) -> np.ndarray:
-        """
-        Sample n values from this distribution.
-        
-        Args:
-            n: Number of samples
-            seed: Random seed for reproducibility
-            
-        Returns:
-            Array of shape (n,) with sampled values
-        """
-        rng = np.random.default_rng(seed)
-        
-        if self.type == 'fixed':
-            return np.full(n, self.value)
-        
-        elif self.type == 'normal':
-            return rng.normal(self.mean, self.std, n)
-        
-        elif self.type == 'uniform':
-            return rng.uniform(self.min, self.max, n)
-        
-        elif self.type == 'exponential':
-            return rng.exponential(self.scale, n)
-        
-        else:
-            raise ValueError(f"Unknown distribution type: {self.type}")
+# Physical constants
+G = 9.80665  # Gravity at surface, m/s^2
+EARTH_RADIUS = 6371.0  # km
+H_SCALE = 8.5  # Atmosphere scale height, km
+RHO_0 = 1.225  # Sea level density, kg/m^3
 
 
 @dataclass
 class LaunchParameters:
-    """
-    Launch vehicle parameters with uncertainty distributions.
+    """Launch vehicle parameters with distributions."""
     
-    All parameters can be specified as distributions to explore
-    sensitivity to uncertainties.
-    """
-    # Engine performance
-    thrust_N: ParameterDistribution
-    Isp: ParameterDistribution  # seconds, specific impulse
+    # Engine parameters
+    thrust_N: float = 7.5e6  # Newtons
+    thrust_variance: float = 0.0  # Fractional variance (0.0 = none, 0.05 = ±5%)
+    Isp: float = 310.0  # Specific impulse, seconds
+    Isp_variance: float = 0.03  # ±3%
     
-    # Vehicle mass
-    dry_mass_kg: ParameterDistribution
-    fuel_mass_kg: ParameterDistribution
+    # Mass parameters
+    dry_mass_kg: float = 25000.0  # Empty mass
+    fuel_mass_kg: float = 420000.0  # Propellant mass
+    mass_variance: float = 0.02  # ±2%
     
     # Aerodynamics
-    Cd: ParameterDistribution  # drag coefficient
-    reference_area_m2: ParameterDistribution
+    Cd: float = 0.3  # Drag coefficient
+    Cd_variance: float = 0.2  # ±20%
+    reference_area_m2: float = 10.0  # Cross-sectional area
     
-    # Control uncertainties
-    thrust_variance: ParameterDistribution  # fractional (e.g., 0.05 = ±5%)
-    gimbal_delay_s: ParameterDistribution  # control system lag
+    # Control
+    gimbal_delay_s: float = 0.1  # Control system lag
+    gimbal_delay_variance: float = 0.3  # ±30%
     
-    # Target orbit
+    # Mission targets
     target_altitude_km: float = 200.0
-    target_inclination_deg: float = 28.5  # Not used in 2D model yet
+    target_velocity_km_s: float = 7.8  # Orbital velocity
     
-    # Simulation config
-    n_runs: int = 10000
-    seed: Optional[int] = None
+    # Simulation
+    dt: float = 0.1  # Time step, seconds
+    max_duration_s: float = 600.0  # 10 minutes max
 
 
 @dataclass
-class SensitivityResult:
-    """Sensitivity analysis results (Sobol indices)."""
-    param: str
-    first_order: float  # Main effect
-    total_order: float  # Total effect (includes interactions)
-    rank: int  # 1 = most important
+class State:
+    """Rocket state at a point in time."""
+    time: float  # seconds
+    altitude_km: float
+    velocity_km_s: float
+    mass_kg: float
+    acceleration_m_s2: float
+    thrust_N: float
+    drag_N: float
     
-    @property
-    def interaction_effect(self) -> float:
-        """Estimate of interaction effects with other parameters."""
-        return self.total_order - self.first_order
+    def to_dict(self) -> dict:
+        return {
+            "t": round(self.time, 1),
+            "h": round(self.altitude_km, 2),
+            "v": round(self.velocity_km_s, 3),
+            "m": round(self.mass_kg, 0),
+            "a": round(self.acceleration_m_s2, 2)
+        }
+
+
+@dataclass
+class TrajectoryResult:
+    """Result of a single simulation run."""
+    success: bool
+    reason: Optional[str]  # If failure
+    trajectory: List[State]
+    final_altitude_km: float
+    final_velocity_km_s: float
+    runtime_seconds: float
+    parameters_used: Dict[str, float]
+    
+    def to_dict(self) -> dict:
+        return {
+            "success": self.success,
+            "reason": self.reason,
+            "final_altitude_km": round(self.final_altitude_km, 2),
+            "final_velocity_km_s": round(self.final_velocity_km_s, 3),
+            "runtime_s": round(self.runtime_seconds, 2),
+            "trajectory_sample": [s.to_dict() for s in self.trajectory[::10]]  # Sample every 10th point
+        }
 
 
 @dataclass
 class MonteCarloResult:
-    """Aggregate results from Monte Carlo simulation."""
-    sim_id: str
-    params: LaunchParameters
-    n_runs: int
+    """Result of Monte Carlo simulation."""
+    success_rate: float
+    total_runs: int
+    success_count: int
+    failure_modes: Dict[str, int]
+    trajectories_sample: List[TrajectoryResult]  # 10 sample trajectories
     runtime_seconds: float
-    timestamp: datetime = field(default_factory=datetime.utcnow)
-    
-    # Aggregate metrics
-    success_rate: float = 0.0
-    mean_final_altitude_km: float = 0.0
-    std_final_altitude_km: float = 0.0
-    mean_final_velocity_km_s: float = 0.0
-    std_final_velocity_km_s: float = 0.0
-    
-    # Sensitivity analysis
-    sensitivity: List[SensitivityResult] = field(default_factory=list)
-    
-    # Failure analysis
-    failure_modes: Dict[str, int] = field(default_factory=dict)
-    
-    # Sample trajectories for visualization
-    trajectories_sample: List[TrajectoryResult] = field(default_factory=list)
-    
-    # Quality metrics
-    unstable_count: int = 0  # Trajectories with NaN/Inf
+    parameters_summary: Dict[str, Dict[str, float]]  # mean, std per parameter
     
     def to_dict(self) -> dict:
-        """Serialize to JSON-compatible dict."""
         return {
-            'sim_id': self.sim_id,
-            'n_runs': self.n_runs,
-            'runtime_seconds': self.runtime_seconds,
-            'timestamp': self.timestamp.isoformat(),
-            'success_rate': self.success_rate,
-            'mean_final_altitude_km': self.mean_final_altitude_km,
-            'std_final_altitude_km': self.std_final_altitude_km,
-            'mean_final_velocity_km_s': self.mean_final_velocity_km_s,
-            'std_final_velocity_km_s': self.std_final_velocity_km_s,
-            'sensitivity': [
-                {
-                    'param': s.param,
-                    'first_order': s.first_order,
-                    'total_order': s.total_order,
-                    'rank': s.rank
-                }
-                for s in self.sensitivity
-            ],
-            'failure_modes': [
-                {'mode': mode, 'count': count, 'percentage': count / self.n_runs * 100}
-                for mode, count in self.failure_modes.items()
-            ],
-            'unstable_count': self.unstable_count
+            "success_rate": round(self.success_rate, 3),
+            "total_runs": self.total_runs,
+            "success_count": self.success_count,
+            "failure_modes": self.failure_modes,
+            "runtime_seconds": round(self.runtime_seconds, 2),
+            "trajectories_sample": [t.to_dict() for t in self.trajectories_sample],
+            "parameters_summary": self.parameters_summary
         }
 
 
-# ============================================================================
-# Physics Constants
-# ============================================================================
-
-class Constants:
-    """Physical constants for simulation."""
-    EARTH_RADIUS_KM = 6371.0  # km
-    G = 9.81  # m/s^2 at surface
-    SCALE_HEIGHT_KM = 8.5  # km, atmospheric scale height
-    RHO_0 = 1.225  # kg/m^3, sea level air density
-    G0 = 9.80665  # m/s^2, standard gravity (for Isp calculation)
-
-
-# ============================================================================
-# Physics Engine
-# ============================================================================
-
 class PhysicsEngine:
     """
-    Single-trajectory launch simulation with 6-DOF physics (simplified 2D).
+    2D Vertical Launch Physics Engine.
     
-    Assumptions/Simplifications (MVP):
-    - 2D vertical ascent (no pitch program yet)
+    Simplifications (MVP):
+    - 2D vertical ascent only (no pitch program)
     - Exponential atmosphere model
-    - Constant thrust and Isp during burn
+    - Constant gravity (no altitude variation for MVP)
     - No staging (single stage to orbit)
-    - No Earth rotation effects
-    - No wind
-    
-    Future (P1):
-    - 3D with pitch/yaw control
-    - Multi-stage separation
-    - Realistic atmosphere (US Standard Atmosphere 1976)
-    - Propellant sloshing dynamics
     """
     
-    def __init__(self, dt: float = 0.1):
+    def __init__(self, params: LaunchParameters):
+        self.params = params
+    
+    def atmosphere_density(self, altitude_km: float) -> float:
+        """Exponential atmosphere density model."""
+        return RHO_0 * np.exp(-altitude_km / H_SCALE)
+    
+    def gravity(self, altitude_km: float) -> float:
         """
-        Initialize physics engine.
+        Gravity at altitude.
         
-        Args:
-            dt: Time step in seconds (default 0.1s = 100Hz)
+        For MVP: constant. For full version: g = g0 * (R / (R + h))^2
         """
-        self.dt = dt
-        self.max_time = 600  # Max 10 minutes
+        return G  # Simplified for MVP
+    
+    def calculate_forces(
+        self,
+        state: State,
+        thrust_N: float,
+        Cd: float,
+        reference_area: float
+    ) -> Tuple[float, float, float]:
+        """
+        Calculate forces acting on rocket.
+        
+        Returns:
+            (thrust_N, drag_N, gravity_N)
+        """
+        # Thrust (upward)
+        thrust = thrust_N
+        
+        # Drag (downward, opposes velocity)
+        velocity_m_s = state.velocity_km_s * 1000
+        rho = self.atmosphere_density(state.altitude_km)
+        drag = 0.5 * rho * velocity_m_s**2 * Cd * reference_area
+        
+        # Gravity (downward)
+        gravity_force = state.mass_kg * self.gravity(state.altitude_km)
+        
+        return thrust, drag, gravity_force
+    
+    def fuel_consumption_rate(self, thrust_N: float, Isp: float) -> float:
+        """
+        Calculate fuel consumption rate.
+        
+        Tsiolkovsky: mdot = F / (Isp * g0)
+        """
+        return thrust_N / (Isp * G)
     
     def simulate_launch(
         self,
-        thrust_N: float,
-        Isp: float,
-        dry_mass_kg: float,
-        fuel_mass_kg: float,
-        Cd: float,
-        reference_area_m2: float,
-        thrust_variance: float,
-        gimbal_delay_s: float,
-        target_altitude_km: float
+        sampled_params: Optional[Dict[str, float]] = None
     ) -> TrajectoryResult:
         """
-        Simulate a single launch trajectory.
+        Simulate a single launch trajectory with given (or sampled) parameters.
         
         Args:
-            thrust_N: Nominal thrust in Newtons
-            Isp: Specific impulse in seconds
-            dry_mass_kg: Dry mass (structure) in kg
-            fuel_mass_kg: Initial fuel mass in kg
-            Cd: Drag coefficient (dimensionless)
-            reference_area_m2: Reference area for drag in m^2
-            thrust_variance: Fractional thrust variation (e.g., 0.05 = ±5%)
-            gimbal_delay_s: Control system lag in seconds
-            target_altitude_km: Target final altitude in km
-            
+            sampled_params: Override parameters (for Monte Carlo)
+        
         Returns:
-            TrajectoryResult with success/failure and trajectory data
+            TrajectoryResult with success/failure and trajectory
         """
-        # TODO: Implement in S1.1
-        # For now, return mock data
+        import time as tm
+        start_time = tm.time()
+        
+        # Use sampled parameters or defaults
+        if sampled_params:
+            thrust = sampled_params.get("thrust_N", self.params.thrust_N)
+            Isp = sampled_params.get("Isp", self.params.Isp)
+            mass = sampled_params.get("total_mass_kg", self.params.dry_mass_kg + self.params.fuel_mass_kg)
+            fuel = sampled_params.get("fuel_mass_kg", self.params.fuel_mass_kg)
+            Cd = sampled_params.get("Cd", self.params.Cd)
+        else:
+            thrust = self.params.thrust_N
+            Isp = self.params.Isp
+            mass = self.params.dry_mass_kg + self.params.fuel_mass_kg
+            fuel = self.params.fuel_mass_kg
+            Cd = self.params.Cd
+        
+        params_used = {
+            "thrust_N": thrust,
+            "Isp": Isp,
+            "total_mass_kg": mass,
+            "Cd": Cd
+        }
+        
+        # Initial state
+        state = State(
+            time=0.0,
+            altitude_km=0.0,
+            velocity_km_s=0.0,
+            mass_kg=mass,
+            acceleration_m_s2=0.0,
+            thrust_N=thrust,
+            drag_N=0.0
+        )
+        
+        trajectory = [state]
+        
+        # RK4 Integration
+        dt = self.params.dt
+        t = 0.0
+        
+        while t < self.params.max_duration_s:
+            # Check fuel
+            if fuel <= 0:
+                return TrajectoryResult(
+                    success=False,
+                    reason="fuel_depletion",
+                    trajectory=trajectory,
+                    final_altitude_km=state.altitude_km,
+                    final_velocity_km_s=state.velocity_km_s,
+                    runtime_seconds=tm.time() - start_time,
+                    parameters_used=params_used
+                )
+            
+            # Calculate forces
+            thrust_force, drag_force, gravity_force = self.calculate_forces(
+                state, thrust, Cd, self.params.reference_area_m2
+            )
+            
+            # Net force and acceleration
+            net_force = thrust_force - drag_force - gravity_force
+            acceleration = net_force / state.mass_kg  # m/s^2
+            
+            # Check structural limits (5g max)
+            if abs(acceleration) > 5 * G:
+                return TrajectoryResult(
+                    success=False,
+                    reason="structural_failure",
+                    trajectory=trajectory,
+                    final_altitude_km=state.altitude_km,
+                    final_velocity_km_s=state.velocity_km_s,
+                    runtime_seconds=tm.time() - start_time,
+                    parameters_used=params_used
+                )
+            
+            # Update state (Euler for MVP, RK4 for production)
+            velocity_m_s = state.velocity_km_s * 1000 + acceleration * dt
+            altitude_m = state.altitude_km * 1000 + velocity_m_s * dt
+            
+            # Fuel consumption
+            mdot = self.fuel_consumption_rate(thrust, Isp)
+            fuel_consumed = mdot * dt
+            fuel -= fuel_consumed
+            new_mass = state.mass_kg - fuel_consumed
+            
+            # Create new state
+            state = State(
+                time=t + dt,
+                altitude_km=altitude_m / 1000,
+                velocity_km_s=velocity_m_s / 1000,
+                mass_kg=new_mass,
+                acceleration_m_s2=acceleration,
+                thrust_N=thrust,
+                drag_N=drag_force
+            )
+            
+            trajectory.append(state)
+            t += dt
+            
+            # Check orbit insertion
+            if state.altitude_km >= self.params.target_altitude_km:
+                # Check velocity
+                if state.velocity_km_s >= self.params.target_velocity_km_s * 0.95:
+                    return TrajectoryResult(
+                        success=True,
+                        reason=None,
+                        trajectory=trajectory,
+                        final_altitude_km=state.altitude_km,
+                        final_velocity_km_s=state.velocity_km_s,
+                        runtime_seconds=tm.time() - start_time,
+                        parameters_used=params_used
+                    )
+                else:
+                    return TrajectoryResult(
+                        success=False,
+                        reason="insufficient_velocity",
+                        trajectory=trajectory,
+                        final_altitude_km=state.altitude_km,
+                        final_velocity_km_s=state.velocity_km_s,
+                        runtime_seconds=tm.time() - start_time,
+                        parameters_used=params_used
+                    )
+        
+        # Timeout
         return TrajectoryResult(
             success=False,
-            reason="Not implemented yet - S1.1 in progress"
+            reason="timeout",
+            trajectory=trajectory,
+            final_altitude_km=state.altitude_km,
+            final_velocity_km_s=state.velocity_km_s,
+            runtime_seconds=tm.time() - start_time,
+            parameters_used=params_used
         )
-    
-    def _calculate_forces(
-        self,
-        state: State,
-        thrust_N: float,
-        Cd: float,
-        reference_area_m2: float
-    ) -> Tuple[float, float, float]:
-        """
-        Calculate forces acting on vehicle.
-        
-        Returns:
-            Tuple of (F_thrust, F_drag, F_gravity) in Newtons
-        """
-        # TODO: Implement in S1.1, S1.3
-        pass
-    
-    def _atmosphere_density(self, altitude_km: float) -> float:
-        """
-        Atmospheric density using exponential model.
-        
-        Args:
-            altitude_km: Altitude above sea level in km
-            
-        Returns:
-            Air density in kg/m^3
-        """
-        return Constants.RHO_0 * np.exp(-altitude_km / Constants.SCALE_HEIGHT_KM)
-    
-    def _gravity(self, altitude_km: float) -> float:
-        """
-        Gravitational acceleration at altitude.
-        
-        Args:
-            altitude_km: Altitude above sea level in km
-            
-        Returns:
-            Gravity in m/s^2
-        """
-        r = Constants.EARTH_RADIUS_KM + altitude_km
-        return Constants.G * (Constants.EARTH_RADIUS_KM / r) ** 2
-    
-    def _check_failure(
-        self,
-        state: State,
-        target_altitude_km: float,
-        fuel_remaining_kg: float
-    ) -> Optional[str]:
-        """
-        Check for failure conditions.
-        
-        Returns:
-            Failure reason string, or None if no failure
-        """
-        # TODO: Implement in S1.4
-        pass
 
-
-# ============================================================================
-# Monte Carlo Engine
-# ============================================================================
 
 class MonteCarloEngine:
     """
-    Parallel Monte Carlo simulation runner.
+    Monte Carlo simulation engine.
     
-    Runs N simulations with parameter sampling and aggregates results.
+    Runs N simulations with sampled parameters from distributions.
     """
     
-    def __init__(self, physics_engine: Optional[PhysicsEngine] = None):
-        """
-        Initialize Monte Carlo engine.
-        
-        Args:
-            physics_engine: PhysicsEngine instance (creates new one if None)
-        """
-        self.physics = physics_engine or PhysicsEngine()
-        self.max_workers = min(multiprocessing.cpu_count(), 8)
+    def __init__(self, params: LaunchParameters):
+        self.params = params
+        self.physics = PhysicsEngine(params)
     
-    def run_simulation(
-        self,
-        params: LaunchParameters,
-        progress_callback: Optional[Callable[[int, int], None]] = None
-    ) -> MonteCarloResult:
-        """
-        Run Monte Carlo simulation with parameter sampling.
-        
-        Args:
-            params: Launch parameters with distributions
-            progress_callback: Optional callback(completed, total) for progress updates
-            
-        Returns:
-            MonteCarloResult with aggregated metrics
-        """
-        # TODO: Implement in S2.2, S2.3
-        # For now, return mock data
-        import uuid
-        return MonteCarloResult(
-            sim_id=str(uuid.uuid4()),
-            params=params,
-            n_runs=params.n_runs,
-            runtime_seconds=0.0,
-            success_rate=0.0,
-            failure_modes={"not_implemented": params.n_runs}
-        )
-    
-    def _sample_parameters(
-        self,
-        params: LaunchParameters
-    ) -> np.ndarray:
+    def sample_parameters(self, n_samples: int, seed: Optional[int] = None) -> np.ndarray:
         """
         Sample parameters from distributions.
         
         Returns:
-            Array of shape (n_runs, n_params) with sampled values
+            Array of shape (n_samples, n_params) with sampled values
         """
-        # TODO: Implement in S2.1
-        pass
-
-
-# ============================================================================
-# Sensitivity Analyzer
-# ============================================================================
-
-class SensitivityAnalyzer:
-    """
-    Sensitivity analysis using Sobol indices.
+        if seed is not None:
+            np.random.seed(seed)
+        
+        samples = {}
+        
+        # Thrust (normal distribution)
+        samples["thrust_N"] = np.random.normal(
+            self.params.thrust_N,
+            self.params.thrust_N * self.params.thrust_variance,
+            n_samples
+        )
+        
+        # Isp (normal distribution)
+        samples["Isp"] = np.random.normal(
+            self.params.Isp,
+            self.params.Isp * self.params.Isp_variance,
+            n_samples
+        )
+        
+        # Mass (normal distribution)
+        total_mass = self.params.dry_mass_kg + self.params.fuel_mass_kg
+        samples["total_mass_kg"] = np.random.normal(
+            total_mass,
+            total_mass * self.params.mass_variance,
+            n_samples
+        )
+        samples["fuel_mass_kg"] = self.params.fuel_mass_kg * np.ones(n_samples)
+        
+        # Cd (uniform distribution)
+        samples["Cd"] = np.random.uniform(
+            self.params.Cd * (1 - self.params.Cd_variance),
+            self.params.Cd * (1 + self.params.Cd_variance),
+            n_samples
+        )
+        
+        return samples
     
-    Identifies which parameters have the most impact on success/failure.
-    """
-    
-    def calculate_sobol_indices(
+    def run_simulation(
         self,
-        param_samples: np.ndarray,
-        outcomes: np.ndarray,
-        param_names: List[str]
-    ) -> List[SensitivityResult]:
+        n_runs: int = 1000,
+        seed: Optional[int] = None,
+        parallel: bool = True
+    ) -> MonteCarloResult:
         """
-        Calculate Sobol sensitivity indices.
+        Run Monte Carlo simulation.
         
         Args:
-            param_samples: Array of shape (N, D) with parameter samples
-            outcomes: Array of shape (N,) with binary outcomes (1=success, 0=failure)
-            param_names: List of parameter names
-            
+            n_runs: Number of simulation runs
+            seed: Random seed for reproducibility
+            parallel: Use multiprocessing (CPU-bound)
+        
         Returns:
-            List of SensitivityResult ranked by importance
+            MonteCarloResult with aggregated statistics
         """
-        # TODO: Implement in S3.1, S3.2
-        # For now, return mock data
-        return [
-            SensitivityResult(
-                param="thrust_variance",
-                first_order=0.45,
-                total_order=0.52,
-                rank=1
-            )
-        ]
+        import time
+        start_time = time.time()
+        
+        logger.info("monte_carlo_start", n_runs=n_runs, parallel=parallel)
+        
+        # Sample parameters
+        samples = self.sample_parameters(n_runs, seed)
+        
+        # Run simulations
+        results = []
+        
+        if parallel and n_runs >= 100:
+            # Parallel execution
+            max_workers = min(os.cpu_count() or 4, 8)
+            with ProcessPoolExecutor(max_workers=max_workers) as executor:
+                # Convert samples to list of dicts
+                param_dicts = [
+                    {key: samples[key][i] for key in samples}
+                    for i in range(n_runs)
+                ]
+                
+                results = list(executor.map(self._run_single, param_dicts))
+        else:
+            # Sequential execution (for debugging)
+            for i in range(n_runs):
+                param_dict = {key: samples[key][i] for key in samples}
+                result = self.physics.simulate_launch(param_dict)
+                results.append(result)
+        
+        # Aggregate results
+        success_count = sum(1 for r in results if r.success)
+        success_rate = success_count / n_runs
+        
+        # Failure modes
+        failure_modes = {}
+        for r in results:
+            if not r.success and r.reason:
+                failure_modes[r.reason] = failure_modes.get(r.reason, 0) + 1
+        
+        # Sample trajectories (10 random)
+        sample_indices = np.random.choice(n_runs, min(10, n_runs), replace=False)
+        trajectories_sample = [results[i] for i in sample_indices]
+        
+        # Parameters summary
+        parameters_summary = {}
+        for key in samples:
+            parameters_summary[key] = {
+                "mean": float(np.mean(samples[key])),
+                "std": float(np.std(samples[key])),
+                "min": float(np.min(samples[key])),
+                "max": float(np.max(samples[key]))
+            }
+        
+        runtime = time.time() - start_time
+        
+        logger.info(
+            "monte_carlo_complete",
+            n_runs=n_runs,
+            success_rate=success_rate,
+            runtime_sec=round(runtime, 2)
+        )
+        
+        return MonteCarloResult(
+            success_rate=success_rate,
+            total_runs=n_runs,
+            success_count=success_count,
+            failure_modes=failure_modes,
+            trajectories_sample=trajectories_sample,
+            runtime_seconds=runtime,
+            parameters_summary=parameters_summary
+        )
+    
+    def _run_single(self, param_dict: dict) -> TrajectoryResult:
+        """Helper for parallel execution."""
+        return self.physics.simulate_launch(param_dict)
 
 
-# ============================================================================
-# Example Usage
-# ============================================================================
+# Singleton for API usage
+_launch_simulator: Optional[MonteCarloEngine] = None
 
-if __name__ == "__main__":
-    """Example usage of the launch simulator."""
-    
-    # Define launch parameters with uncertainty
-    params = LaunchParameters(
-        thrust_N=ParameterDistribution(type='normal', mean=7.5e6, std=0.05 * 7.5e6),
-        Isp=ParameterDistribution(type='normal', mean=310, std=3),
-        dry_mass_kg=ParameterDistribution(type='normal', mean=25000, std=500),
-        fuel_mass_kg=ParameterDistribution(type='normal', mean=420000, std=2000),
-        Cd=ParameterDistribution(type='uniform', min=0.25, max=0.35),
-        reference_area_m2=ParameterDistribution(type='fixed', value=20.0),
-        thrust_variance=ParameterDistribution(type='uniform', min=0.0, max=0.1),
-        gimbal_delay_s=ParameterDistribution(type='exponential', scale=0.1),
-        target_altitude_km=200.0,
-        n_runs=10000,
-        seed=42
-    )
-    
-    # Run simulation
-    print("Running Monte Carlo simulation...")
-    print(f"  Parameters: {params.n_runs} runs")
-    
-    engine = MonteCarloEngine()
-    result = engine.run_simulation(params)
-    
-    print(f"\nResults:")
-    print(f"  Success rate: {result.success_rate:.1%}")
-    print(f"  Mean altitude: {result.mean_final_altitude_km:.1f} km")
-    print(f"  Runtime: {result.runtime_seconds:.1f}s")
-    
-    print(f"\nTop parameters by sensitivity:")
-    for s in result.sensitivity[:5]:
-        print(f"  {s.rank}. {s.param}: {s.total_order:.2%}")
-    
-    print(f"\nFailure modes:")
-    for mode, count in result.failure_modes.items():
-        pct = count / result.n_runs * 100
-        print(f"  {mode}: {count} ({pct:.1f}%)")
+
+def get_launch_simulator(params: Optional[LaunchParameters] = None) -> MonteCarloEngine:
+    """Get or create launch simulator instance."""
+    global _launch_simulator
+    if _launch_simulator is None or params is not None:
+        _launch_simulator = MonteCarloEngine(params or LaunchParameters())
+    return _launch_simulator

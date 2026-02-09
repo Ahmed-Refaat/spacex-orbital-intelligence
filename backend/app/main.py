@@ -14,7 +14,10 @@ from app.core.security import limiter, get_allowed_origins, get_valid_api_key
 from app.services.cache import cache
 from app.services.tle_service import tle_service
 from app.services.spacex_api import spacex_client
-from app.api import satellites, analysis, launches, websocket, ops, analytics, launches_live, cdm, export, monitoring
+from app.services.orbital_engine import orbital_engine
+from app.services.spice_client import spice_client
+from app.services import async_orbital_engine
+from app.api import satellites, analysis, launches, websocket, ops, analytics, launches_live, cdm, export, monitoring, performance, rate_limits, launch_simulation
 
 # Configure logging
 structlog.configure(
@@ -46,6 +49,23 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("Redis connection failed, running without cache", error=str(e))
     
+    # Initialize SPICE client
+    spice_url = settings.SPICE_URL if hasattr(settings, 'SPICE_URL') else "http://spice:50000"
+    try:
+        await asyncio.wait_for(spice_client.health_check(), timeout=3)
+        logger.info("SPICE service available", url=spice_url)
+    except Exception as e:
+        logger.warning("SPICE service unavailable, using SGP4 fallback", error=str(e))
+    
+    # Initialize async orbital engine
+    from app.services.async_orbital_engine import AsyncOrbitalEngine
+    async_orbital_engine.async_orbital_engine = AsyncOrbitalEngine(
+        orbital_engine=orbital_engine,
+        spice_client=spice_client,
+        spice_url=spice_url
+    )
+    logger.info("AsyncOrbitalEngine initialized")
+    
     # TLE loading in background (don't block startup)
     async def load_tle_background():
         try:
@@ -64,6 +84,10 @@ async def lifespan(app: FastAPI):
     
     # Cleanup
     refresh_task.cancel()
+    try:
+        await async_orbital_engine.async_orbital_engine.shutdown()
+    except:
+        pass
     try:
         await cache.disconnect()
     except:
@@ -131,11 +155,60 @@ async def log_requests(request: Request, call_next):
     return response
 
 
-# Exception handler
+# Exception handlers - Specific handlers for better error visibility
+from pydantic import ValidationError
+
+@app.exception_handler(ValidationError)
+async def validation_exception_handler(request: Request, exc: ValidationError):
+    """Handle Pydantic validation errors."""
+    logger.warning(
+        "Validation error",
+        path=request.url.path,
+        errors=exc.errors()
+    )
+    return JSONResponse(
+        status_code=422,
+        content={
+            "detail": "Validation error",
+            "errors": exc.errors()
+        }
+    )
+
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_exception_handler(request: Request, exc: RateLimitExceeded):
+    """Handle rate limit errors with specific logging."""
+    logger.warning(
+        "Rate limit exceeded",
+        path=request.url.path,
+        ip=request.client.host if request.client else "unknown"
+    )
+    return JSONResponse(
+        status_code=429,
+        content={"detail": "Rate limit exceeded. Please try again later."}
+    )
+
 @app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):
-    """Handle uncaught exceptions."""
-    logger.error("Unhandled exception", error=str(exc), path=request.url.path)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    """Handle truly unhandled exceptions only."""
+    # Don't catch HTTPException (FastAPI handles it properly)
+    from fastapi import HTTPException
+    if isinstance(exc, HTTPException):
+        logger.info(
+            "HTTP exception",
+            status=exc.status_code,
+            detail=exc.detail,
+            path=request.url.path
+        )
+        raise exc  # Let FastAPI handle it
+    
+    # Log unhandled exceptions
+    logger.error(
+        "Unhandled exception",
+        error=str(exc),
+        error_type=type(exc).__name__,
+        path=request.url.path
+    )
+    
     return JSONResponse(
         status_code=500,
         content={"detail": "Internal server error"}
@@ -152,6 +225,9 @@ app.include_router(launches_live.router, prefix=settings.api_prefix)
 app.include_router(cdm.router, prefix=settings.api_prefix)
 app.include_router(export.router, prefix=settings.api_prefix)
 app.include_router(monitoring.router, prefix=settings.api_prefix)
+app.include_router(performance.router, prefix=settings.api_prefix)
+app.include_router(rate_limits.router, prefix=settings.api_prefix)
+app.include_router(launch_simulation.router, prefix=settings.api_prefix)
 app.include_router(websocket.router)
 
 

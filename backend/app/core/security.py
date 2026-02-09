@@ -23,13 +23,29 @@ API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 # Generate default API key if not set
 def get_api_key() -> str:
-    """Get API key from environment or generate one."""
+    """
+    Get API key from environment or generate one (dev only).
+    
+    Raises:
+        RuntimeError: If ENV=production and SPACEX_API_KEY not set
+    """
     key = os.environ.get("SPACEX_API_KEY")
+    env = os.environ.get("ENV", "development").lower()
+    
     if not key:
-        # Generate and log a key for first run
+        if env == "production":
+            raise RuntimeError(
+                "SPACEX_API_KEY must be set in production environment. "
+                "Generate one with: python -c 'import secrets; print(secrets.token_urlsafe(32))' "
+                "Then set it in .env: SPACEX_API_KEY=<generated_key>"
+            )
+        
+        # Development only: generate temporary key
         key = secrets.token_urlsafe(32)
-        print(f"[SECURITY] No SPACEX_API_KEY set. Generated: {key}")
-        print(f"[SECURITY] Set SPACEX_API_KEY={key} in .env for persistence")
+        print(f"[SECURITY] [DEV] No SPACEX_API_KEY set. Generated temporary: {key}")
+        print(f"[SECURITY] [DEV] Set SPACEX_API_KEY={key} in .env for persistence")
+        print(f"[SECURITY] [DEV] This is DEV MODE ONLY. Production requires explicit key.")
+    
     return key
 
 # Cached API key

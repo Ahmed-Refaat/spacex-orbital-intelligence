@@ -13,13 +13,15 @@ export function SimulationTab() {
       <div className="bg-spacex-dark rounded-lg p-4">
         <div className="flex items-center gap-2 mb-3">
           <PlayCircle size={16} className="text-spacex-accent" />
-          <h3 className="font-medium">Orbital Simulation</h3>
+          <h3 className="font-medium">Simulation Suite</h3>
         </div>
         <p className="text-sm text-gray-400">
-          Run simulations to predict orbital behavior, deorbit trajectories, 
-          and collision scenarios.
+          Monte-Carlo launch simulations, deorbit trajectories, and collision scenarios.
         </p>
       </div>
+
+      {/* Launch Simulator (NEW!) */}
+      <LaunchSimulator />
 
       {/* Deorbit Simulation */}
       <DeorbitSimulation satelliteId={selectedSatelliteId} />
@@ -287,6 +289,157 @@ function DeorbitSimulation({ satelliteId }: { satelliteId: string | null }) {
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+function LaunchSimulator() {
+  const [running, setRunning] = useState(false)
+  const [result, setResult] = useState<any>(null)
+  const [params, setParams] = useState({
+    thrust_variance: 0.05,
+    n_runs: 1000
+  })
+
+  const runSimulation = async () => {
+    setRunning(true)
+    setResult(null)
+    
+    try {
+      const res = await fetch('/api/v1/simulation/launch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          thrust_N: 7500000,
+          thrust_variance: params.thrust_variance,
+          Isp: 310,
+          n_runs: params.n_runs
+        })
+      })
+      
+      const data = await res.json()
+      
+      if (data.status === 'complete') {
+        setResult(data)
+      } else if (data.status === 'running') {
+        // Poll for results
+        const simId = data.sim_id
+        const pollResult = async () => {
+          const pollRes = await fetch(`/api/v1/simulation/launch/${simId}`)
+          const pollData = await pollRes.json()
+          
+          if (pollData.status === 'complete') {
+            setResult(pollData)
+            setRunning(false)
+          } else if (pollData.status === 'running') {
+            setTimeout(pollResult, 2000)
+          } else {
+            setRunning(false)
+          }
+        }
+        setTimeout(pollResult, 2000)
+      }
+    } catch (error) {
+      console.error('Simulation failed:', error)
+      setRunning(false)
+    }
+  }
+
+  return (
+    <div className="bg-spacex-dark rounded-lg p-4">
+      <div className="flex items-center gap-2 mb-3">
+        <PlayCircle size={16} className="text-orange-400" />
+        <h3 className="font-medium">Launch Simulator (Monte-Carlo)</h3>
+      </div>
+      
+      <p className="text-xs text-gray-400 mb-4">
+        Probabilistic launch simulation with parameter uncertainty. 
+        Tests {params.n_runs.toLocaleString()} scenarios to predict success rate.
+      </p>
+
+      {/* Parameters */}
+      <div className="space-y-3 mb-4">
+        <div>
+          <label className="text-xs text-gray-400 mb-1 block">
+            Thrust Variance (±{(params.thrust_variance * 100).toFixed(0)}%)
+          </label>
+          <input
+            type="range"
+            min="0"
+            max="0.20"
+            step="0.01"
+            value={params.thrust_variance}
+            onChange={(e) => setParams({ ...params, thrust_variance: parseFloat(e.target.value) })}
+            className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
+            disabled={running}
+          />
+        </div>
+
+        <div>
+          <label className="text-xs text-gray-400 mb-1 block">
+            Simulations: {params.n_runs.toLocaleString()}
+          </label>
+          <input
+            type="range"
+            min="100"
+            max="5000"
+            step="100"
+            value={params.n_runs}
+            onChange={(e) => setParams({ ...params, n_runs: parseInt(e.target.value) })}
+            className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
+            disabled={running}
+          />
+        </div>
+      </div>
+
+      {/* Run Button */}
+      <button
+        onClick={runSimulation}
+        disabled={running}
+        className={`w-full py-2 rounded flex items-center justify-center gap-2 transition ${
+          running
+            ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
+            : 'bg-orange-600 hover:bg-orange-700 text-white'
+        }`}
+      >
+        <PlayCircle size={16} />
+        {running ? 'Running simulation...' : 'Run Simulation'}
+      </button>
+
+      {/* Results */}
+      {result && result.status === 'complete' && (
+        <div className="mt-4 space-y-3">
+          <div className="bg-spacex-card rounded p-3">
+            <div className="text-xs text-gray-400 mb-1">Success Rate</div>
+            <div className={`text-2xl font-bold ${
+              result.success_rate > 0.9 ? 'text-green-400' :
+              result.success_rate > 0.7 ? 'text-yellow-400' : 'text-red-400'
+            }`}>
+              {(result.success_rate * 100).toFixed(1)}%
+            </div>
+            <div className="text-xs text-gray-500 mt-1">
+              {result.success_count} / {result.total_runs} launches successful
+            </div>
+          </div>
+
+          {/* Failure Modes */}
+          {result.failure_modes && Object.keys(result.failure_modes).length > 0 && (
+            <div className="bg-spacex-card rounded p-3">
+              <div className="text-xs text-gray-400 mb-2">Failure Modes</div>
+              {Object.entries(result.failure_modes).map(([mode, count]: [string, any]) => (
+                <div key={mode} className="flex justify-between text-xs mb-1">
+                  <span className="text-gray-500">{mode.replace(/_/g, ' ')}</span>
+                  <span className="text-white">{count}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="text-xs text-gray-500">
+            Runtime: {result.runtime_seconds?.toFixed(2)}s
+          </div>
+        </div>
+      )}
     </div>
   )
 }
