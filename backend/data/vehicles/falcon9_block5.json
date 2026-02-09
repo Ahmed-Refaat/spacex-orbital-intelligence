@@ -1,0 +1,203 @@
+{
+  "vehicle_id": "falcon9_block5",
+  "name": "Falcon 9 Block 5",
+  "manufacturer": "SpaceX",
+  "first_flight": "2018-05-11",
+  "status": "active",
+  
+  "description": "Falcon 9 Block 5 is SpaceX's flagship medium-lift launch vehicle. Final and most capable version of Falcon 9, featuring upgraded engines, landing legs, and reusability improvements.",
+  
+  "stages": [
+    {
+      "stage_number": 1,
+      "name": "Booster",
+      "description": "First stage with 9 Merlin 1D+ engines",
+      
+      "mass": {
+        "dry_mass_kg": 22200,
+        "propellant_mass_kg": 409500,
+        "total_mass_kg": 431700,
+        "source": "SpaceX User Guide 2020, various press releases"
+      },
+      
+      "propulsion": {
+        "engines": 9,
+        "engine_type": "Merlin 1D+",
+        "propellant": "RP-1/LOX",
+        
+        "thrust_sea_level_N": 7607000,
+        "thrust_vacuum_N": 8227000,
+        "thrust_per_engine_sl_N": 845222,
+        "thrust_per_engine_vac_N": 914111,
+        
+        "isp_sea_level_s": 282,
+        "isp_vacuum_s": 311,
+        
+        "burn_time_max_s": 162,
+        "throttle_range": [0.70, 1.0],
+        
+        "source": "SpaceX User Guide 2020, NSF forum analysis"
+      },
+      
+      "structure": {
+        "length_m": 41.2,
+        "diameter_m": 3.66,
+        "material": "Aluminum-lithium alloy",
+        "grid_fins": true,
+        "landing_legs": true
+      },
+      
+      "notes": [
+        "Block 5 features upgraded engines with ~8% more thrust than Block 4",
+        "Designed for 10+ flights with minimal refurbishment",
+        "Typical MECO (Main Engine Cutoff) at T+2:30-2:40, ~70 km altitude",
+        "Can perform RTLS (Return to Launch Site) or ASDS (Autonomous Spaceport Drone Ship) landings"
+      ]
+    },
+    {
+      "stage_number": 2,
+      "name": "Upper Stage",
+      "description": "Second stage with 1 Merlin Vacuum engine",
+      
+      "mass": {
+        "dry_mass_kg": 4000,
+        "propellant_mass_kg": 107500,
+        "total_mass_kg": 111500,
+        "source": "SpaceX User Guide, community estimates"
+      },
+      
+      "propulsion": {
+        "engines": 1,
+        "engine_type": "Merlin Vacuum (MVac)",
+        "propellant": "RP-1/LOX",
+        
+        "thrust_sea_level_N": 0,
+        "thrust_vacuum_N": 934000,
+        
+        "isp_sea_level_s": 0,
+        "isp_vacuum_s": 348,
+        
+        "burn_time_max_s": 397,
+        "throttle_range": [0.39, 1.0],
+        
+        "source": "SpaceX User Guide 2020"
+      },
+      
+      "structure": {
+        "length_m": 14.0,
+        "diameter_m": 3.66,
+        "material": "Aluminum-lithium alloy",
+        "restartable": true,
+        "max_restarts": 3
+      },
+      
+      "notes": [
+        "MVac has larger nozzle (optimized for vacuum) and higher expansion ratio",
+        "Typical SECO-1 (Second Engine Cutoff) at T+8:30-9:00",
+        "Can coast for hours and restart for precise orbital insertion",
+        "Deorbits naturally after payload separation (upper stage disposal)"
+      ]
+    }
+  ],
+  
+  "payload": {
+    "fairing_mass_kg": 1750,
+    "fairing_length_m": 13.1,
+    "fairing_diameter_m": 5.2,
+    "fairing_volume_m3": 145,
+    
+    "max_payload": {
+      "leo_kg": 22800,
+      "gto_kg": 8300,
+      "mars_kg": 4020,
+      "notes": "LEO = 200 km x 28.5° orbit, GTO = 185 x 35,786 km"
+    }
+  },
+  
+  "performance": {
+    "total_mass_at_liftoff_kg": 549054,
+    "total_height_m": 70.0,
+    "launch_thrust_to_weight": 1.41,
+    
+    "typical_missions": {
+      "starlink": {
+        "payload_kg": 15600,
+        "orbit": "LEO 53° inclination",
+        "booster_recovery": "ASDS"
+      },
+      "dragon_iss": {
+        "payload_kg": 6000,
+        "orbit": "LEO 51.6° inclination (ISS)",
+        "booster_recovery": "ASDS or RTLS"
+      },
+      "geo_comsat": {
+        "payload_kg": 5500,
+        "orbit": "GTO",
+        "booster_recovery": "ASDS (expendable for heavy payloads)"
+      }
+    }
+  },
+  
+  "validation_data": {
+    "reference_flight": {
+      "mission": "CRS-21",
+      "date": "2020-12-06",
+      "payload_kg": 2972,
+      "target_orbit": "210 km x 51.6°",
+      
+      "telemetry": {
+        "meco": {
+          "time_s": 155,
+          "altitude_km": 68,
+          "velocity_km_s": 2.1,
+          "downrange_km": 70,
+          "source": "SpaceX webcast, community tracking"
+        },
+        "staging": {
+          "time_s": 158,
+          "altitude_km": 70,
+          "notes": "3 second coast between MECO and staging"
+        },
+        "seco": {
+          "time_s": 523,
+          "altitude_km": 210,
+          "velocity_km_s": 7.8,
+          "source": "Orbital insertion parameters from telemetry"
+        },
+        "final_orbit": {
+          "perigee_km": 209,
+          "apogee_km": 212,
+          "inclination_deg": 51.63,
+          "period_min": 88.6
+        }
+      },
+      
+      "notes": [
+        "CRS-21 was a Dragon 2 cargo mission to ISS",
+        "Booster B1058 (4th flight), landed successfully on ASDS",
+        "Low payload mass makes this a good validation case (well within capabilities)",
+        "Telemetry widely documented due to webcast coverage"
+      ]
+    }
+  },
+  
+  "sources": [
+    "Falcon 9 User's Guide Rev 2.0 (March 2020) - https://www.spacex.com/media/falcon-users-guide.pdf",
+    "SpaceX official specifications - https://www.spacex.com/vehicles/falcon-9/",
+    "NASASpaceFlight forums - https://forum.nasaspaceflight.com/",
+    "r/SpaceX wiki - https://www.reddit.com/r/spacex/wiki/",
+    "Gunter's Space Page",
+    "CRS-21 mission press kit and webcast"
+  ],
+  
+  "assumptions": [
+    "Stage 2 dry mass estimated at 4000 kg (not publicly disclosed)",
+    "Propellant densities: RP-1 = 810 kg/m³, LOX = 1141 kg/m³",
+    "Stage separation assumed instantaneous (real duration ~3 seconds)",
+    "Grid fins and landing legs mass included in booster dry mass",
+    "Fairing mass estimated from public data (not precisely documented)"
+  ],
+  
+  "version": "1.0.0",
+  "last_updated": "2026-02-10"
+}
