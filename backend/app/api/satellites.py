@@ -1,12 +1,17 @@
 """Satellite API endpoints."""
-from fastapi import APIRouter, HTTPException, Query
-from typing import Optional
+from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Form, Request
+from typing import Optional, Literal
 
 from app.services.orbital_engine import orbital_engine
 from app.services.tle_service import tle_service
 from app.services.spacex_api import spacex_client
 from app.services.cache import cache
 from app.services.mock_satellites import mock_generator
+from app.services.spice_client import spice_client, SpiceServiceUnavailable, SpiceClientError
+from app.core.security import limiter
+import structlog
+
+logger = structlog.get_logger()
 
 router = APIRouter(prefix="/satellites", tags=["Satellites"])
 

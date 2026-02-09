@@ -22,6 +22,12 @@ aioredis==2.0.1
 httpx==0.26.0
 aiohttp==3.9.3
 
+# Resilience
+circuitbreaker==1.4.0
+
+# XML/OMM parsing
+lxml==5.1.0
+
 # Validation & serialization
 pydantic==2.6.1
 pydantic-settings==2.1.0
