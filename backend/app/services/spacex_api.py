@@ -3,6 +3,7 @@ import httpx
 from datetime import datetime
 from typing import Optional
 from dataclasses import dataclass
+from circuitbreaker import circuit
 
 from app.core.config import get_settings
 
@@ -160,12 +161,20 @@ class SpaceXAPIClient:
             await self._client.aclose()
             self._client = None
     
+    @circuit(failure_threshold=5, recovery_timeout=60, expected_exception=httpx.HTTPError)
     async def get_starlink_satellites(
         self,
         limit: int = 100,
         offset: int = 0
     ) -> list[StarlinkSatellite]:
-        """Fetch Starlink satellite data."""
+        """
+        Fetch Starlink satellite data.
+        
+        Circuit breaker protection:
+        - Opens after 5 consecutive failures
+        - Stays open for 60 seconds
+        - Half-open state allows 1 test request
+        """
         client = await self._get_client()
         
         # SpaceX API uses POST with query body
@@ -206,12 +215,19 @@ class SpaceXAPIClient:
         
         return all_satellites
     
+    @circuit(failure_threshold=5, recovery_timeout=60, expected_exception=httpx.HTTPError)
     async def get_launches(
         self,
         limit: int = 50,
         upcoming: bool = False
     ) -> list[Launch]:
-        """Fetch launch data."""
+        """
+        Fetch launch data.
+        
+        Circuit breaker protection:
+        - Opens after 5 consecutive failures
+        - Stays open for 60 seconds
+        """
         client = await self._get_client()
         
         query = {"upcoming": upcoming} if upcoming else {}
@@ -231,8 +247,15 @@ class SpaceXAPIClient:
         data = response.json()
         return [Launch.from_api(l) for l in data.get("docs", [])]
     
+    @circuit(failure_threshold=5, recovery_timeout=60, expected_exception=httpx.HTTPError)
     async def get_cores(self, limit: int = 50) -> list[Core]:
-        """Fetch booster core data."""
+        """
+        Fetch booster core data.
+        
+        Circuit breaker protection:
+        - Opens after 5 consecutive failures
+        - Stays open for 60 seconds
+        """
         client = await self._get_client()
         
         response = await client.post(

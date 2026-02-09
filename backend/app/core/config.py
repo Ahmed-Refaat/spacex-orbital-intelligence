@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     # Redis
     redis_url: str = "redis://localhost:6379/0"
     cache_ttl: int = 300  # 5 minutes
+    cache_prefix: str = "spacex_orbital:"  # Namespace for cache keys
     
     # External APIs
     spacex_api_url: str = "https://api.spacexdata.com/v4"

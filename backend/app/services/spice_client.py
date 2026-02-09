@@ -13,6 +13,7 @@ Architecture:
 
 import httpx
 import numpy as np
+from circuitbreaker import circuit
 from typing import Optional, Tuple, List, Literal
 from datetime import datetime
 from dataclasses import dataclass
@@ -283,6 +284,7 @@ class SpiceClient:
             logger.error("SPICE HTTP error", error=str(e))
             raise SpiceClientError(f"HTTP error: {str(e)}")
     
+    @circuit(failure_threshold=5, recovery_timeout=60, expected_exception=httpx.HTTPError)
     async def propagate_omm(
         self,
         satellite_id: str,
@@ -291,6 +293,10 @@ class SpiceClient:
     ) -> Tuple['SatellitePosition', Optional[CovarianceMatrix]]:
         """
         Propagate satellite loaded from OMM.
+        
+        Circuit breaker protection:
+        - Opens after 5 consecutive failures
+        - Stays open for 60 seconds
         
         Args:
             satellite_id: Satellite ID (NORAD catalog number)
@@ -363,6 +369,7 @@ class SpiceClient:
             logger.error("SPICE HTTP error", error=str(e))
             raise SpiceClientError(f"HTTP error: {str(e)}")
     
+    @circuit(failure_threshold=5, recovery_timeout=60, expected_exception=httpx.HTTPError)
     async def batch_propagate(
         self,
         satellite_ids: List[str],
@@ -373,6 +380,10 @@ class SpiceClient:
         Batch propagate multiple satellites.
         
         High-performance batch processing (750K propagations/second).
+        
+        Circuit breaker protection:
+        - Opens after 5 consecutive failures
+        - Stays open for 60 seconds
         
         Args:
             satellite_ids: List of satellite IDs

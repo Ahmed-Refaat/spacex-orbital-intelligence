@@ -4,6 +4,7 @@ import asyncio
 from datetime import datetime, timedelta
 from typing import Optional
 import structlog
+from circuitbreaker import circuit
 
 from app.core.config import get_settings
 from app.services.orbital_engine import orbital_engine
@@ -45,8 +46,15 @@ class TLEService:
         logger.error("Space-Track authentication failed", response=response.text[:200])
         return False
     
+    @circuit(failure_threshold=3, recovery_timeout=120, expected_exception=httpx.HTTPError)
     async def fetch_tle_data(self, source: str = "starlink") -> dict[str, tuple[str, str, str]]:
-        """Fetch TLE data from Space-Track.org using JSON format for names."""
+        """
+        Fetch TLE data from Space-Track.org using JSON format for names.
+        
+        Circuit breaker protection:
+        - Opens after 3 consecutive failures
+        - Stays open for 120 seconds (longer recovery for external API)
+        """
         
         # Build query based on source - use JSON format to get names
         if source == "starlink":

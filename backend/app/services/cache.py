@@ -40,13 +40,26 @@ class CacheService:
             await self._client.close()
             self._connected = False
     
+    def _make_key(self, key: str) -> str:
+        """
+        Add namespace prefix to cache key.
+        
+        Args:
+            key: Unprefixed cache key
+        
+        Returns:
+            Prefixed key (e.g., "spacex_orbital:satellites:positions")
+        """
+        return f"{self.settings.cache_prefix}{key}"
+    
     async def get(self, key: str) -> Optional[Any]:
         """Get value from cache."""
         if not self._connected:
             return None
         
         try:
-            value = await self._client.get(key)
+            prefixed_key = self._make_key(key)
+            value = await self._client.get(prefixed_key)
             if value:
                 return json.loads(value)
             return None
@@ -66,7 +79,8 @@ class CacheService:
         
         try:
             ttl = ttl or self.settings.cache_ttl
-            await self._client.setex(key, ttl, json.dumps(value))
+            prefixed_key = self._make_key(key)
+            await self._client.setex(prefixed_key, ttl, json.dumps(value))
             return True
         except Exception as e:
             logger.warning("Cache set failed", key=key, error=str(e))
@@ -78,20 +92,26 @@ class CacheService:
             return False
         
         try:
-            await self._client.delete(key)
+            prefixed_key = self._make_key(key)
+            await self._client.delete(prefixed_key)
             return True
         except Exception as e:
             logger.warning("Cache delete failed", key=key, error=str(e))
             return False
     
     async def clear_pattern(self, pattern: str) -> int:
-        """Clear all keys matching pattern."""
+        """
+        Clear all keys matching pattern.
+        
+        Note: Pattern is automatically prefixed.
+        """
         if not self._connected:
             return 0
         
         try:
+            prefixed_pattern = self._make_key(pattern)
             keys = []
-            async for key in self._client.scan_iter(match=pattern):
+            async for key in self._client.scan_iter(match=prefixed_pattern):
                 keys.append(key)
             
             if keys:
