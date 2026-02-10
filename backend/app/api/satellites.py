@@ -24,7 +24,7 @@ def validate_satellite_id(
     satellite_id: str = Path(
         ...,
         description="NORAD catalog number (1-99999)",
-        regex=r'^\d{1,5}$'
+        pattern=r'^\d{1,5}$'
     )
 ) -> str:
     """

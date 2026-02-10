@@ -4,7 +4,7 @@ Input validation models for API endpoints.
 Security: All external inputs must be validated at the boundary.
 """
 from pydantic import BaseModel, Field, validator, AnyHttpUrl
-from typing import Optional
+from typing import Optional, ClassVar
 import re
 import ipaddress
 from urllib.parse import urlparse
@@ -66,7 +66,7 @@ class WebhookUrlParam(BaseModel):
     url: AnyHttpUrl
     
     # Allowed webhook domains (allowlist approach)
-    ALLOWED_DOMAINS = [
+    ALLOWED_DOMAINS: ClassVar[list[str]] = [
         'hooks.slack.com',
         'discord.com',
         'discordapp.com',
@@ -76,7 +76,7 @@ class WebhookUrlParam(BaseModel):
     ]
     
     # Blocked IP ranges (SSRF protection)
-    BLOCKED_NETWORKS = [
+    BLOCKED_NETWORKS: ClassVar[list] = [
         ipaddress.ip_network('10.0.0.0/8'),       # Private
         ipaddress.ip_network('172.16.0.0/12'),    # Private
         ipaddress.ip_network('192.168.0.0/16'),   # Private
@@ -140,7 +140,7 @@ class EpochParam(BaseModel):
     """
     value: str = Field(
         ...,
-        regex=r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?$',
+        pattern=r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?$',
         description="ISO 8601 timestamp"
     )
     
