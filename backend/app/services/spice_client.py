@@ -154,6 +154,11 @@ class SpiceClient:
     @circuit(failure_threshold=5, recovery_timeout=60, name="spice_health_check")
     async def health_check(self) -> bool:
         """
+        Check SPICE service health.
+        
+        Uses circuit breaker to prevent cascade failures.
+        """
+        """
         Check if SPICE service is available.
         
         Rate limited to max 1 check per 30 seconds to avoid API abuse.
