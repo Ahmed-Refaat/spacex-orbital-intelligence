@@ -16,10 +16,11 @@ import structlog
 try:
     from anise import Almanac
     from anise.time import Epoch
-    from anise.constants import Frames
+    from anise.astro import Frame
     ANISE_AVAILABLE = True
 except ImportError:
     ANISE_AVAILABLE = False
+    Frame = None
 
 logger = structlog.get_logger(__name__)
 
