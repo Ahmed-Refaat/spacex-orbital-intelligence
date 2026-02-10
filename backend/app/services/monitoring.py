@@ -185,7 +185,7 @@ class CollisionMonitor:
                     try:
                         await callback(alert) if asyncio.iscoroutinefunction(callback) else callback(alert)
                     except Exception as e:
-                        print(f"Notification callback error: {e}")
+                        logger.error("Notification callback error", error=str(e), error_type=type(e).__name__)
             
             self.last_check = datetime.now(timezone.utc)
             
@@ -254,7 +254,7 @@ class CollisionMonitor:
                 try:
                     await self.check_for_alerts(probability_threshold=probability_threshold)
                 except Exception as e:
-                    print(f"Monitoring error: {e}")
+                    logger.error("Monitoring error", error=str(e), error_type=type(e).__name__)
                 
                 await asyncio.sleep(interval_minutes * 60)
         
@@ -279,8 +279,15 @@ collision_monitor = CollisionMonitor()
 # Example notification callbacks
 async def log_notification(alert: CDMAlert):
     """Log critical alerts to console/file."""
-    print(f"[ALERT] Critical conjunction: {alert.sat1_name} vs {alert.sat2_name}")
-    print(f"        TCA: {alert.tca}, Miss: {alert.miss_distance_km:.3f}km, Pc: {alert.probability:.2e}")
+    logger.warning(
+        "Critical conjunction alert",
+        sat1=alert.sat1_name,
+        sat2=alert.sat2_name,
+        tca=alert.tca.isoformat(),
+        miss_distance_km=round(alert.miss_distance_km, 3),
+        probability=alert.probability,
+        emergency=alert.emergency
+    )
 
 
 async def webhook_notification(alert: CDMAlert):
@@ -298,10 +305,19 @@ async def webhook_notification(alert: CDMAlert):
     }
     
     try:
-        async with httpx.AsyncClient() as client:
-            await client.post(webhook_url, json=payload, timeout=10)
+        # Validate webhook URL (SSRF protection)
+        from app.models.validators import WebhookUrlParam
+        try:
+            validated_webhook = WebhookUrlParam(url=webhook_url)
+            webhook_url = str(validated_webhook.url)
+        except Exception as e:
+            logger.error("Webhook URL validation failed", url=webhook_url, error=str(e))
+            return
+        
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            await client.post(webhook_url, json=payload)
     except Exception as e:
-        print(f"Webhook notification failed: {e}")
+        logger.error("Webhook notification failed", url=webhook_url, error=str(e), error_type=type(e).__name__)
 
 
 # Register default callbacks

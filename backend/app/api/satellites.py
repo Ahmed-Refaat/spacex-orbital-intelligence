@@ -1,5 +1,5 @@
 """Satellite API endpoints."""
-from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Form, Request, Depends
+from fastapi import APIRouter, HTTPException, Query, UploadFile, File, Form, Request, Depends, Path
 from typing import Optional, Literal
 from datetime import datetime
 import defusedxml.ElementTree as ET
@@ -12,11 +12,31 @@ from app.services.mock_satellites import mock_generator
 from app.services.spice_client import spice_client, SpiceServiceUnavailable, SpiceClientError
 from app.core.security import limiter, verify_api_key
 from app.models.omm import OMMUploadForm
+from app.models.validators import NoradIdParam, PaginationParams
 import structlog
 
 logger = structlog.get_logger()
 
 router = APIRouter(prefix="/satellites", tags=["Satellites"])
+
+
+def validate_satellite_id(
+    satellite_id: str = Path(
+        ...,
+        description="NORAD catalog number (1-99999)",
+        regex=r'^\d{1,5}$'
+    )
+) -> str:
+    """
+    Validate satellite_id path parameter.
+    
+    Security: Prevents injection attacks and invalid inputs.
+    """
+    try:
+        validated = NoradIdParam(value=satellite_id)
+        return validated.value
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.get("")
@@ -101,8 +121,17 @@ async def get_all_positions():
 
 
 @router.get("/{satellite_id}")
-async def get_satellite(satellite_id: str):
-    """Get detailed information for a specific satellite."""
+async def get_satellite(
+    satellite_id: str = Depends(validate_satellite_id)
+):
+    """
+    Get detailed information for a specific satellite.
+    
+    Args:
+        satellite_id: NORAD catalog number (validated, 1-99999)
+        
+    Security: Input validated to prevent injection attacks.
+    """
     await tle_service.ensure_data_loaded()
     
     pos = orbital_engine.propagate(satellite_id)
@@ -123,11 +152,15 @@ async def get_satellite(satellite_id: str):
 
 @router.get("/{satellite_id}/orbit")
 async def get_satellite_orbit(
-    satellite_id: str,
+    satellite_id: str = Depends(validate_satellite_id),
     hours: int = Query(24, ge=1, le=168),
     step_minutes: int = Query(5, ge=1, le=60)
 ):
-    """Get orbital path for visualization."""
+    """
+    Get orbital path for visualization.
+    
+    Security: Input validated to prevent injection attacks.
+    """
     cache_key = f"satellites:orbit:{satellite_id}:{hours}:{step_minutes}"
     
     # Try cache
@@ -380,12 +413,14 @@ async def upload_omm(
 
 @router.get("/{satellite_id}/position")
 async def get_satellite_position_with_uncertainty(
-    satellite_id: str,
+    satellite_id: str = Depends(validate_satellite_id),
     epoch: Optional[datetime] = Query(None, description="Propagation epoch (default: now)"),
     include_covariance: bool = Query(False, description="Include uncertainty ellipsoid")
 ):
     """
     Get satellite position with optional uncertainty information.
+    
+    Security: Input validated to prevent injection attacks.
     
     If satellite was loaded from OMM with covariance matrix,
     optionally includes position/velocity uncertainty (1-sigma).

@@ -2,6 +2,7 @@
 TLE data fetching and management service.
 
 COMPLIANCE: Uses centralized session manager to comply with Space-Track API policy.
+FALLBACK: Uses Celestrak public API when Space-Track is unavailable.
 """
 import asyncio
 from datetime import datetime, timedelta
@@ -13,6 +14,7 @@ import httpx
 from app.core.config import get_settings
 from app.services.orbital_engine import orbital_engine
 from app.services.spacetrack_session import session_manager
+from app.services.celestrak_fallback import celestrak
 
 logger = structlog.get_logger()
 
@@ -34,37 +36,64 @@ class TLEService:
         # Use centralized session manager
         self.session = session_manager
     
-    @circuit(failure_threshold=3, recovery_timeout=120, expected_exception=httpx.HTTPError)
     async def fetch_tle_data(self, source: str = "starlink") -> dict[str, tuple[str, str, str]]:
         """
-        Fetch TLE data from Space-Track.org using JSON format for names.
-        
-        Circuit breaker protection:
-        - Opens after 3 consecutive failures
-        - Stays open for 120 seconds (longer recovery for external API)
+        Fetch TLE data from Space-Track.org (primary) or Celestrak (fallback).
         
         COMPLIANCE: GP data is cached for minimum 1 hour per Space-Track policy.
+        FALLBACK: Uses Celestrak public API when Space-Track fails.
+        
+        Note: Circuit breaker removed to allow Celestrak fallback even after Space-Track failures.
         """
         
-        # Build query based on source - use JSON format to get names
-        if source == "starlink":
-            query = "/basicspacedata/query/class/gp/OBJECT_NAME/~~STARLINK/orderby/NORAD_CAT_ID/format/json"
-        elif source == "stations":
-            query = "/basicspacedata/query/class/gp/OBJECT_TYPE/PAYLOAD/PERIOD/90--95/ECCENTRICITY/<0.01/orderby/NORAD_CAT_ID/limit/100/format/json"
-        else:
-            query = "/basicspacedata/query/class/gp/OBJECT_TYPE/PAYLOAD/DECAY/null-val/orderby/NORAD_CAT_ID/limit/1000/format/json"
+        # Try Space-Track first (preferred source)
+        try:
+            # Build query based on source - use JSON format to get names
+            if source == "starlink":
+                query = "/basicspacedata/query/class/gp/OBJECT_NAME/~~STARLINK/orderby/NORAD_CAT_ID/format/json"
+            elif source == "stations":
+                query = "/basicspacedata/query/class/gp/OBJECT_TYPE/PAYLOAD/PERIOD/90--95/ECCENTRICITY/<0.01/orderby/NORAD_CAT_ID/limit/100/format/json"
+            else:
+                query = "/basicspacedata/query/class/gp/OBJECT_TYPE/PAYLOAD/DECAY/null-val/orderby/NORAD_CAT_ID/limit/1000/format/json"
+            
+            # Fetch TLE data using session manager (auto-caches for 1h minimum)
+            logger.info("Fetching TLE data from Space-Track (primary)", source=source)
+            
+            # CRITICAL: GP ephemerides MUST be cached for minimum 1 hour
+            response = await self.session.get(query, cache_ttl=3600)
+            
+            if response and response.status_code == 200:
+                data = response.json()
+                result = self._parse_json_tle(data)
+                logger.info("Space-Track fetch successful", count=len(result))
+                return result
+            else:
+                # Space-Track failed, fall through to Celestrak
+                logger.warning(
+                    "Space-Track fetch failed, trying Celestrak fallback",
+                    status_code=response.status_code if response else None
+                )
         
-        # Fetch TLE data using session manager (auto-caches for 1h minimum)
-        logger.info("Fetching TLE data from Space-Track", source=source)
+        except Exception as e:
+            logger.warning("Space-Track error, trying Celestrak fallback", error=str(e))
         
-        # CRITICAL: GP ephemerides MUST be cached for minimum 1 hour
-        response = await self.session.get(query, cache_ttl=3600)
+        # Fallback to Celestrak (public API, no auth)
+        logger.info("Using Celestrak as TLE source (Space-Track unavailable)", source=source)
         
-        if not response or response.status_code != 200:
-            raise Exception(f"Failed to fetch TLE data: {response.status_code if response else 'No response'}")
-        
-        data = response.json()
-        return self._parse_json_tle(data)
+        try:
+            if source == "starlink":
+                result = await celestrak.fetch_starlink_tle()
+            elif source == "stations":
+                result = await celestrak.fetch_stations()
+            else:
+                result = await celestrak.fetch_active_satellites(limit=1000)
+            
+            logger.info("Celestrak fetch successful", count=len(result), source="celestrak")
+            return result
+            
+        except Exception as e:
+            logger.error("Celestrak fetch failed", error=str(e), source=source)
+            raise
     
     def _parse_json_tle(self, data: list) -> dict[str, tuple[str, str, str]]:
         """Parse JSON format TLE data from Space-Track."""

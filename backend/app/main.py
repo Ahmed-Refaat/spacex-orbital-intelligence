@@ -28,13 +28,16 @@ from app.services.spice_client import spice_client
 from app.services import async_orbital_engine
 from app.api import satellites, analysis, ephemeris, ground_stations, launches, websocket, ops, analytics, launches_live, cdm, export, monitoring, performance, rate_limits, launch_simulation, data_source
 
-# Configure logging
+# Configure logging with security sanitization
+from app.core.logging_sanitizer import sanitize_log_record
+
 structlog.configure(
     processors=[
         structlog.stdlib.filter_by_level,
         structlog.stdlib.add_logger_name,
         structlog.stdlib.add_log_level,
         structlog.processors.TimeStamper(fmt="iso"),
+        sanitize_log_record,  # Security: Redact secrets before logging
         structlog.processors.JSONRenderer()
     ],
     context_class=dict,
@@ -88,10 +91,17 @@ async def lifespan(app: FastAPI):
     # TLE loading in background (don't block startup)
     async def load_tle_background():
         try:
-            await asyncio.wait_for(tle_service.update_orbital_engine(), timeout=30)
+            # 180s timeout for Celestrak (large datasets can be slow)
+            await asyncio.wait_for(tle_service.update_orbital_engine(), timeout=180)
             logger.info("TLE data loaded", count=tle_service.satellite_count)
+            # Update Prometheus metric
+            SATELLITES_LOADED.set(tle_service.satellite_count)
+            if tle_service.last_update:
+                TLE_LAST_UPDATE.set(tle_service.last_update.timestamp())
+        except asyncio.TimeoutError:
+            logger.error("TLE load timeout (180s) - using mock data")
         except Exception as e:
-            logger.warning("TLE load failed, using mock data", error=str(e))
+            logger.error("TLE load failed, using mock data", error=str(e), error_type=type(e).__name__)
     
     # Start TLE loading in background
     asyncio.create_task(load_tle_background())
