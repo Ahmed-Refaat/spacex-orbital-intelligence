@@ -25,6 +25,7 @@ from app.services.simulation_6dof import Simulation6DOF, State6DOF, GravityTurnG
 from app.services.thrust_profile import ThrustCalculator
 from app.services.drag_model import DragModel
 from app.services.delta_v_budget import DeltaVCalculator
+from app.services.guidance_realistic import Falcon9GuidanceLaw
 
 
 @dataclass
@@ -197,10 +198,10 @@ class FullLaunchSimulator:
             mass=vehicle.total_mass_kg
         )
         
-        # Guidance (aggressive for low trajectory like Falcon 9 CRS-21)
-        guidance = GravityTurnGuidance(
-            vertical_flight_duration=8.0,  # Very short vertical phase
-            pitch_kickover_angle=15.0  # Aggressive kickover
+        # Guidance (realistic Falcon 9 profile based on telemetry)
+        guidance = Falcon9GuidanceLaw(
+            target_altitude_km=target_altitude_km,
+            target_inclination_deg=target_inclination_deg
         )
         
         # Vehicle properties
@@ -242,19 +243,13 @@ class FullLaunchSimulator:
             thrust = self.thrust_calc.effective_thrust(stage, state.altitude())
             isp = self.thrust_calc.effective_isp(stage, state.altitude())
             
-            # Guidance pitch (simplified realistic profile for Falcon 9)
-            # Based on observed telemetry
-            t = state.time
-            if t < 10:
-                pitch = 90.0  # Vertical
-            elif t < 30:
-                pitch = 90.0 - (t - 10) * 2.0  # Pitch 2°/s
-            elif t < 60:
-                pitch = 50.0 - (t - 30) * 0.5  # Slower turn
-            elif t < 120:
-                pitch = 35.0 - (t - 60) * 0.3  # Even slower
-            else:
-                pitch = max(0.0, 17.0 - (t - 120) * 0.1)  # Final approach
+            # Realistic guidance pitch
+            pitch = guidance.get_pitch_angle(
+                time=state.time,
+                altitude=state.altitude(),
+                velocity=state.velocity_magnitude(),
+                stage=active_stage + 1
+            )
             
             # Step simulation
             state = self.sim_6dof.step(state, thrust, pitch, Cd, area, dt)
