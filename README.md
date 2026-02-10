@@ -47,6 +47,15 @@ chmod 600 backend/.env
 - Risk scoring per satellite
 - Real-time position updates
 
+### 🎬 Visual Effects (IMAX Mode)
+- **Constellation Flow Trails** - Flowing light trails showing satellite movement
+- **Collision Visualization** - Dramatic near-miss alerts with pulsating danger zones
+- **Cinematic Camera** - Automated sequences (Overview, Constellation, Conjunction, Launch)
+- **Atmosphere Effects** - Glowing atmosphere, aurora borealis, city lights on night side
+- **IMAX Mode** - Full Hollywood-style automated presentation (40s sequence)
+
+*See [`VISUAL_EFFECTS_GUIDE.md`](VISUAL_EFFECTS_GUIDE.md) for complete documentation*
+
 ### 📊 Mission Analysis
 - ΔV budget tracking
 - Trajectory CSV export
