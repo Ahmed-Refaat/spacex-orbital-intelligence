@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useState, useRef } from 'react'
+import { Suspense, useEffect, useRef } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { Stars, PerspectiveCamera } from '@react-three/drei'
 import { Earth } from './Earth'
@@ -8,32 +8,42 @@ import { SatelliteTrails } from './SatelliteTrails'
 import { CollisionVisualization, generateMockConjunctions } from './CollisionVisualization'
 import { CinematicCamera, type CinematicCameraControls } from './CinematicCamera'
 import { AtmosphereGlow, AuroraEffect, CityLights } from './AtmosphereGlow'
-import { VisualEffectsPanel } from '../VisualEffectsPanel'
+// import { VisualEffectsPanel } from '../VisualEffectsPanel' // Disabled for now
 import { useStore } from '@/stores/useStore'
 import { useOrbitControls } from '@/hooks/useOrbitControls'
 import { Maximize2, Minimize2 } from 'lucide-react'
 
+// interface VisualEffects {
+//   trails: boolean
+//   collisions: boolean
+//   atmosphere: boolean
+//   aurora: boolean
+//   cityLights: boolean
+//   cinematicMode: 'none' | 'overview' | 'constellation' | 'conjunction' | 'launch' | 'imax'
+// }
+
 export function Globe() {
-  const { satellites, autoRotate } = useStore()
-  const { controlsRef, zoom } = useOrbitControls()
+  const { satellites } = useStore()
+  const { zoom } = useOrbitControls()
   const cinematicControlsRef = useRef<CinematicCameraControls | null>(null)
   
-  // Visual effects state
-  const [visualEffects, setVisualEffects] = useState({
+  // Visual effects state - Hardcoded for now while panel is disabled
+  const visualEffects = {
     trails: false,
     collisions: false,
-    atmosphere: true,
+    atmosphere: false,
     aurora: false,
     cityLights: false,
-    cinematicMode: 'none' as 'none' | 'overview' | 'constellation' | 'conjunction' | 'launch' | 'imax'
-  })
+    cinematicMode: 'none' as const
+  }
 
   // Generate mock conjunctions for demo
   const conjunctions = visualEffects.collisions && satellites.length > 0
     ? generateMockConjunctions(satellites)
     : []
 
-  // Handle cinematic sequence playback
+  // Handle cinematic sequence playback - Disabled for now
+  /*
   const handlePlayCinematic = async (sequence: string) => {
     if (!cinematicControlsRef.current) return
     
@@ -46,6 +56,7 @@ export function Globe() {
       )
     }
   }
+  */
 
   return (
     <div className="canvas-container w-full h-full">
@@ -104,12 +115,12 @@ export function Globe() {
         />
       </Canvas>
 
-      {/* Visual Effects Control Panel */}
-      <VisualEffectsPanel
+      {/* Visual Effects Control Panel - Disabled for now */}
+      {/* <VisualEffectsPanel
         controls={visualEffects}
         onChange={setVisualEffects}
         onPlayCinematic={handlePlayCinematic}
-      />
+      /> */}
 
       {/* Overlay UI */}
       <GlobeOverlay zoom={zoom} />
@@ -117,10 +128,11 @@ export function Globe() {
   )
 }
 
-// IMAX Mode - Ultimate cinematic sequence
+// IMAX Mode - Ultimate cinematic sequence - Disabled for now
+/*
 async function playImaxSequence(
   controls: CinematicCameraControls,
-  setEffects: React.Dispatch<React.SetStateAction<any>>
+  setEffects: React.Dispatch<React.SetStateAction<VisualEffects>>
 ) {
   // Enable all effects
   setEffects({
@@ -143,6 +155,7 @@ async function playImaxSequence(
   // Return to normal
   setEffects(prev => ({ ...prev, cinematicMode: 'none' }))
 }
+*/
 
 function GlobeOverlay({ zoom }: { zoom: (delta: number) => void }) {
   const { lastUpdate, stats, isFullscreen, toggleFullscreen } = useStore()

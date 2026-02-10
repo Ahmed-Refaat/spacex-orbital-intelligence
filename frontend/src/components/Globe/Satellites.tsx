@@ -111,14 +111,24 @@ export function SelectedSatelliteHighlight() {
   })
 
   // Get position from satellites array if no detail loaded yet
-  const satPos = selectedSatellite?.geographic || 
-    (selectedSatelliteId ? satellites.find(s => s.id === selectedSatelliteId) : null)
+  // Ensure we have valid data before trying to use it
+  const satPos = (selectedSatellite?.geographic && 
+                  selectedSatellite.geographic.latitude !== undefined) 
+    ? selectedSatellite.geographic 
+    : (selectedSatelliteId ? satellites.find(s => s.id === selectedSatelliteId) : null)
 
   if (!satPos) return null
 
-  const lat = 'latitude' in satPos ? satPos.latitude : satPos.lat
-  const lon = 'longitude' in satPos ? satPos.longitude : satPos.lon
-  const alt = 'altitude' in satPos ? satPos.altitude : satPos.alt
+  // Handle both SatelliteDetail.geographic and SatellitePosition formats
+  const lat = 'latitude' in satPos ? satPos.latitude : (satPos as any).lat
+  const lon = 'longitude' in satPos ? satPos.longitude : (satPos as any).lon
+  const alt = 'altitude' in satPos ? satPos.altitude : (satPos as any).alt
+
+  // Safety check: ensure we have valid numbers
+  if (typeof lat !== 'number' || typeof lon !== 'number' || typeof alt !== 'number') {
+    console.warn('Invalid satellite position data:', satPos)
+    return null
+  }
 
   const phi = (90 - lat) * (Math.PI / 180)
   const theta = (lon + 180) * (Math.PI / 180)
