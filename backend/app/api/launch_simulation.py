@@ -76,7 +76,7 @@ class SimulationResult(BaseModel):
     parameters_summary: dict
 
 
-@router.post("", response_model=SimulationResponse)
+@router.post("")
 async def run_launch_simulation(
     params: LaunchParametersRequest,
     background_tasks: BackgroundTasks
@@ -146,22 +146,22 @@ async def run_launch_simulation(
                 parallel=True
             )
             
+            # Build full result dict
+            result_dict = {
+                "sim_id": sim_id,
+                "status": "complete",
+                **result.to_dict()
+            }
+            
             # Cache result
             await cache.set(
                 f"launch_sim:{sim_id}",
-                {
-                    "sim_id": sim_id,
-                    "status": "complete",
-                    **result.to_dict()
-                },
+                result_dict,
                 ttl=3600  # 1 hour
             )
             
-            return SimulationResponse(
-                sim_id=sim_id,
-                status="complete",
-                message=f"Simulation complete: {result.success_rate:.1%} success rate"
-            )
+            # Return full result immediately (not just minimal response)
+            return result_dict
         
         else:
             # For large simulations, run in background

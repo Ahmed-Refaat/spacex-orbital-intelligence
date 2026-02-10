@@ -4,8 +4,7 @@ TLE data fetching and management service.
 COMPLIANCE: Uses centralized session manager to comply with Space-Track API policy.
 FALLBACK: Multi-source fallback chain:
   1. Space-Track (primary, when unbanned)
-  2. Celestrak (secondary, bulk public data)
-  3. N2YO (tertiary, individual fetches only - 300 req/hour free)
+  2. N2YO (secondary, individual fetches only - 300 req/hour free)
 """
 import asyncio
 from datetime import datetime, timedelta
@@ -17,9 +16,7 @@ import httpx
 from app.core.config import get_settings
 from app.services.orbital_engine import orbital_engine
 from app.services.spacetrack_session import session_manager
-from app.services.celestrak_fallback import celestrak
 from app.services.n2yo_client import n2yo_client
-from app.services.tle_loader import local_tle_loader
 
 logger = structlog.get_logger()
 
@@ -43,13 +40,15 @@ class TLEService:
     
     async def fetch_tle_data(self, source: str = "starlink") -> dict[str, tuple[str, str, str]]:
         """
-        Fetch TLE data from Space-Track.org or Celestrak fallback.
+        Fetch TLE data from Space-Track.org (when available).
         
         COMPLIANCE: GP data is cached for minimum 1 hour per Space-Track policy.
-        FALLBACK: Space-Track → Celestrak → N2YO (individual)
+        FALLBACK: When Space-Track fails/banned, return empty dict and rely on N2YO individual fetches.
+        
+        Note: Space-Track currently banned - this will fail gracefully and use N2YO.
         """
         
-        # Try Space-Track first (if available/unbanned)
+        # Try Space-Track (if available/unbanned)
         try:
             # Build query based on source - use JSON format to get names
             if source == "starlink":
@@ -78,45 +77,13 @@ class TLEService:
         except Exception as e:
             logger.warning("Space-Track error (may be banned)", error=str(e))
         
-        # Fallback to Celestrak (bulk public data)
-        logger.info("Using Celestrak as TLE source (Space-Track unavailable)", source=source)
-        
-        try:
-            if source == "starlink":
-                result = await celestrak.fetch_starlink_tle()
-            elif source == "stations":
-                result = await celestrak.fetch_stations()
-            else:
-                result = await celestrak.fetch_active_satellites(limit=1000)
-            
-            if result:
-                logger.info("Celestrak fetch successful", count=len(result), source="celestrak")
-                return result
-            
-        except Exception as e:
-            logger.error("Celestrak fetch failed", error=str(e), source=source)
-        
-        # Fallback to local TLE files (offline mode)
-        logger.info("Using local TLE files as final fallback", source=source)
-        
-        try:
-            if source == "starlink":
-                result = local_tle_loader.load_starlink()
-            elif source == "stations":
-                result = local_tle_loader.load_stations()
-            else:
-                result = local_tle_loader.load_starlink()  # Default to Starlink
-            
-            if result:
-                logger.info("Local TLE file loaded successfully", count=len(result), source="local_file")
-                return result
-            else:
-                logger.warning("Local TLE file empty or not found", source=source)
-        except Exception as e:
-            logger.error("Local TLE file load failed", error=str(e), source=source)
-        
-        # Ultimate fallback: empty (will use mock satellites)
-        logger.warning("All TLE sources failed - using mock satellites", source=source)
+        # Space-Track failed/banned - return empty dict
+        # Individual satellites will be fetched via N2YO on-demand
+        logger.info(
+            "Space-Track unavailable - using N2YO for individual satellite fetches",
+            source=source,
+            fallback="n2yo_individual"
+        )
         return {}
     
     def _parse_json_tle(self, data: list) -> dict[str, tuple[str, str, str]]:
