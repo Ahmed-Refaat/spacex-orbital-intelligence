@@ -3,8 +3,10 @@ TLE data fetching and management service.
 
 COMPLIANCE: Uses centralized session manager to comply with Space-Track API policy.
 FALLBACK: Multi-source fallback chain:
-  1. Space-Track (primary, when unbanned)
-  2. N2YO (secondary, individual fetches only - 300 req/hour free)
+  1. Space-Track (primary, when reinstated)
+  2. N2YO (secondary, 300 req/hour free)
+  3. Celestrak (tertiary, when VPS network fixed)
+  4. Ivan Stanojevic (last resort, limited coverage)
 """
 import asyncio
 from datetime import datetime, timedelta
@@ -16,6 +18,7 @@ import httpx
 from app.core.config import get_settings
 from app.services.orbital_engine import orbital_engine
 from app.services.spacetrack_session import session_manager
+from app.services.celestrak_fallback import celestrak
 from app.services.n2yo_client import n2yo_client
 
 logger = structlog.get_logger()
@@ -40,15 +43,15 @@ class TLEService:
     
     async def fetch_tle_data(self, source: str = "starlink") -> dict[str, tuple[str, str, str]]:
         """
-        Fetch TLE data from Space-Track.org (when available).
+        Fetch TLE data from Space-Track.org (primary) or Celestrak (fallback).
         
         COMPLIANCE: GP data is cached for minimum 1 hour per Space-Track policy.
-        FALLBACK: When Space-Track fails/banned, return empty dict and rely on N2YO individual fetches.
+        FALLBACK: Uses Celestrak public API when Space-Track fails.
         
-        Note: Space-Track currently banned - this will fail gracefully and use N2YO.
+        Note: Circuit breaker removed to allow Celestrak fallback even after Space-Track failures.
         """
         
-        # Try Space-Track (if available/unbanned)
+        # Try Space-Track first (preferred source)
         try:
             # Build query based on source - use JSON format to get names
             if source == "starlink":
@@ -58,7 +61,8 @@ class TLEService:
             else:
                 query = "/basicspacedata/query/class/gp/OBJECT_TYPE/PAYLOAD/DECAY/null-val/orderby/NORAD_CAT_ID/limit/1000/format/json"
             
-            logger.info("Attempting Space-Track fetch (may be banned)", source=source)
+            # Fetch TLE data using session manager (auto-caches for 1h minimum)
+            logger.info("Fetching TLE data from Space-Track (primary)", source=source)
             
             # CRITICAL: GP ephemerides MUST be cached for minimum 1 hour
             response = await self.session.get(query, cache_ttl=3600)
@@ -69,22 +73,45 @@ class TLEService:
                 logger.info("Space-Track fetch successful", count=len(result))
                 return result
             else:
+                # Space-Track failed, fall through to Celestrak
                 logger.warning(
-                    "Space-Track fetch failed (may be banned)",
+                    "Space-Track fetch failed, trying Celestrak fallback",
                     status_code=response.status_code if response else None
                 )
         
         except Exception as e:
-            logger.warning("Space-Track error (may be banned)", error=str(e))
+            logger.warning("Space-Track error, trying Celestrak fallback", error=str(e))
         
-        # Space-Track failed/banned - return empty dict
-        # Individual satellites will be fetched via N2YO on-demand
-        logger.info(
-            "Space-Track unavailable - using N2YO for individual satellite fetches",
-            source=source,
-            fallback="n2yo_individual"
-        )
-        return {}
+        # Fallback to N2YO (if configured and has quota)
+        if n2yo_client.is_configured:
+            logger.info("Trying N2YO as fallback (Space-Track failed)", source=source)
+            try:
+                # N2YO doesn't support bulk fetch of all Starlinks
+                # Return empty dict and let individual fetches happen later
+                # This triggers fallback to Celestrak
+                logger.info("N2YO configured but bulk fetch not supported, trying Celestrak")
+            except Exception as e:
+                logger.warning("N2YO error, trying Celestrak", error=str(e))
+        
+        # Fallback to Celestrak (public API, no auth)
+        logger.info("Using Celestrak as TLE source (Space-Track unavailable)", source=source)
+        
+        try:
+            if source == "starlink":
+                result = await celestrak.fetch_starlink_tle()
+            elif source == "stations":
+                result = await celestrak.fetch_stations()
+            else:
+                result = await celestrak.fetch_active_satellites(limit=1000)
+            
+            logger.info("Celestrak fetch successful", count=len(result), source="celestrak")
+            return result
+            
+        except Exception as e:
+            logger.error("All bulk TLE sources failed", error=str(e), source=source)
+            # Don't raise - return empty dict and rely on individual N2YO fetches
+            logger.info("Falling back to N2YO for individual satellite fetches")
+            return {}
     
     def _parse_json_tle(self, data: list) -> dict[str, tuple[str, str, str]]:
         """Parse JSON format TLE data from Space-Track."""

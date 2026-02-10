@@ -9,7 +9,9 @@ from typing import Any, Dict
 
 # Patterns to detect secrets
 SECRET_PATTERNS = [
-    # API keys
+    # API keys (specific patterns first for better matching)
+    (r'J5ACSV-H8HVFU-BN3F86-5NMK', '[REDACTED_N2YO_KEY]'),  # N2YO specific pattern
+    (r'[A-Z0-9]{6}-[A-Z0-9]{6}-[A-Z0-9]{6}-[A-Z0-9]{4}', '[REDACTED_N2YO_KEY]'),  # N2YO format
     (r'api[_-]?key["\']?\s*[:=]\s*["\']?([A-Za-z0-9_\-]{20,})', '[REDACTED_API_KEY]'),
     (r'apikey["\']?\s*[:=]\s*["\']?([A-Za-z0-9_\-]{20,})', '[REDACTED_API_KEY]'),
     

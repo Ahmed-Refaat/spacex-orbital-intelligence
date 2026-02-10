@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     spacetrack_username: str = ""
     spacetrack_password: str = ""
     
+    # N2YO API (TLE data fallback, free tier: 300 req/hour)
+    n2yo_api_key: str = ""
+    
     # TLE refresh interval (seconds)
     tle_refresh_interval: int = 3600  # 1 hour
     
