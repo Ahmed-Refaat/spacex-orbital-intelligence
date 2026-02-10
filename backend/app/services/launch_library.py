@@ -3,10 +3,6 @@ import httpx
 from datetime import datetime, timezone
 from typing import Optional
 from dataclasses import dataclass
-from circuitbreaker import circuit
-import structlog
-
-logger = structlog.get_logger()
 
 # Launch Library 2 - Free tier (15 requests/hour)
 # Docs: https://thespacedevs.com/llapi
@@ -218,7 +214,6 @@ class LaunchLibrary2Client:
         # Should never reach here
         raise RuntimeError("Retry loop completed without return or raise")
     
-    @circuit(failure_threshold=5, recovery_timeout=60, expected_exception=httpx.HTTPError)
     async def get_upcoming_launches(
         self,
         limit: int = 20,
@@ -226,8 +221,6 @@ class LaunchLibrary2Client:
     ) -> list[LL2Launch]:
         """
         Get upcoming launches with retry and timeout protection.
-        
-        Circuit breaker: Fails fast after 5 consecutive failures, recovers after 60s.
         
         Args:
             limit: Maximum number of launches to return (default: 20)
@@ -238,7 +231,6 @@ class LaunchLibrary2Client:
         
         Raises:
             httpx.HTTPError: On API error after retries
-            CircuitBreakerError: When circuit is open
         """
         params = {
             "limit": limit,
@@ -270,17 +262,12 @@ class LaunchLibrary2Client:
         
         return launches
     
-    @circuit(failure_threshold=5, recovery_timeout=60, expected_exception=httpx.HTTPError)
     async def get_previous_launches(
         self,
         limit: int = 20,
         agency: Optional[str] = None
     ) -> list[LL2Launch]:
-        """
-        Get past launches with circuit breaker protection.
-        
-        Circuit breaker: Fails fast after 5 consecutive failures, recovers after 60s.
-        """
+        """Get past launches."""
         client = await self._get_client()
         
         params = {

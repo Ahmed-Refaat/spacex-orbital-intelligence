@@ -1,16 +1,24 @@
-"""Redis cache service."""
+"""Redis cache service with timeout protection."""
 import json
 from typing import Optional, Any
+import asyncio
 import redis.asyncio as redis
 import structlog
 
 from app.core.config import get_settings
+from app.core.metrics import CACHE_HIT_RATE
 
 logger = structlog.get_logger()
 
 
 class CacheService:
-    """Redis-based caching service."""
+    """Redis-based caching service with comprehensive timeout handling."""
+    
+    # Timeout configuration (seconds)
+    CONNECT_TIMEOUT = 5.0   # Connection establishment
+    SOCKET_TIMEOUT = 2.0    # Socket read/write operations
+    GET_TIMEOUT = 1.0       # GET operation timeout
+    SET_TIMEOUT = 2.0       # SET operation timeout
     
     def __init__(self):
         self.settings = get_settings()
@@ -18,19 +26,64 @@ class CacheService:
         self._connected = False
     
     async def connect(self) -> bool:
-        """Connect to Redis."""
+        """
+        Connect to Redis with explicit timeouts.
+        
+        Returns:
+            bool: True if connected successfully, False otherwise
+        
+        Raises:
+            Never raises - failures are logged and return False
+        """
         try:
-            self._client = redis.from_url(
-                self.settings.redis_url,
-                encoding="utf-8",
-                decode_responses=True
+            # Create Redis client with timeout configuration
+            self._client = await asyncio.wait_for(
+                redis.from_url(
+                    self.settings.redis_url,
+                    encoding="utf-8",
+                    decode_responses=True,
+                    socket_connect_timeout=self.CONNECT_TIMEOUT,
+                    socket_timeout=self.SOCKET_TIMEOUT,
+                    socket_keepalive=True,
+                    max_connections=50,
+                    retry_on_timeout=True,
+                    health_check_interval=30
+                ),
+                timeout=self.CONNECT_TIMEOUT
             )
-            await self._client.ping()
+            
+            # Test connection
+            await asyncio.wait_for(
+                self._client.ping(),
+                timeout=2.0
+            )
+            
             self._connected = True
-            logger.info("Redis connected")
+            logger.info(
+                "Redis connected",
+                timeouts={
+                    "connect": self.CONNECT_TIMEOUT,
+                    "socket": self.SOCKET_TIMEOUT,
+                    "get": self.GET_TIMEOUT,
+                    "set": self.SET_TIMEOUT
+                }
+            )
             return True
+        
+        except asyncio.TimeoutError:
+            logger.error(
+                "Redis connection timeout",
+                timeout=self.CONNECT_TIMEOUT
+            )
+            self._connected = False
+            return False
+        
         except Exception as e:
-            logger.warning("Redis connection failed, running without cache", error=str(e))
+            logger.warning(
+                "Redis connection failed, running without cache",
+                error=str(e),
+                error_type=type(e).__name__
+            )
             self._connected = False
             return False
     
@@ -53,18 +106,66 @@ class CacheService:
         return f"{self.settings.cache_prefix}{key}"
     
     async def get(self, key: str) -> Optional[Any]:
-        """Get value from cache."""
-        if not self._connected:
+        """
+        Get value from cache with timeout protection.
+        
+        Args:
+            key: Cache key (will be prefixed automatically)
+        
+        Returns:
+            Cached value if found, None otherwise
+        
+        Metrics:
+            Records cache hit/miss/timeout/error to Prometheus
+        """
+        if not self._connected or not self._client:
+            CACHE_HIT_RATE.labels(operation='get', result='disconnected').inc()
             return None
         
         try:
             prefixed_key = self._make_key(key)
-            value = await self._client.get(prefixed_key)
+            
+            # GET with timeout protection
+            value = await asyncio.wait_for(
+                self._client.get(prefixed_key),
+                timeout=self.GET_TIMEOUT
+            )
+            
             if value:
+                CACHE_HIT_RATE.labels(operation='get', result='hit').inc()
+                logger.debug("cache_hit", key=key)
                 return json.loads(value)
+            else:
+                CACHE_HIT_RATE.labels(operation='get', result='miss').inc()
+                logger.debug("cache_miss", key=key)
+                return None
+        
+        except asyncio.TimeoutError:
+            CACHE_HIT_RATE.labels(operation='get', result='timeout').inc()
+            logger.warning(
+                "Cache GET timeout",
+                key=key,
+                timeout=self.GET_TIMEOUT
+            )
             return None
+        
+        except json.JSONDecodeError as e:
+            CACHE_HIT_RATE.labels(operation='get', result='decode_error').inc()
+            logger.error(
+                "Cache value JSON decode failed",
+                key=key,
+                error=str(e)
+            )
+            return None
+        
         except Exception as e:
-            logger.warning("Cache get failed", key=key, error=str(e))
+            CACHE_HIT_RATE.labels(operation='get', result='error').inc()
+            logger.warning(
+                "Cache GET failed",
+                key=key,
+                error=str(e),
+                error_type=type(e).__name__
+            )
             return None
     
     async def set(
@@ -73,17 +174,67 @@ class CacheService:
         value: Any, 
         ttl: Optional[int] = None
     ) -> bool:
-        """Set value in cache."""
-        if not self._connected:
+        """
+        Set value in cache with timeout protection.
+        
+        Args:
+            key: Cache key (will be prefixed automatically)
+            value: Value to cache (must be JSON-serializable)
+            ttl: Time-to-live in seconds (defaults to settings.cache_ttl)
+        
+        Returns:
+            bool: True if set successfully, False otherwise
+        
+        Metrics:
+            Records cache set success/timeout/error to Prometheus
+        """
+        if not self._connected or not self._client:
+            CACHE_HIT_RATE.labels(operation='set', result='disconnected').inc()
             return False
         
         try:
             ttl = ttl or self.settings.cache_ttl
             prefixed_key = self._make_key(key)
-            await self._client.setex(prefixed_key, ttl, json.dumps(value))
+            
+            # Serialize value
+            try:
+                serialized = json.dumps(value)
+            except (TypeError, ValueError) as e:
+                CACHE_HIT_RATE.labels(operation='set', result='serialize_error').inc()
+                logger.error(
+                    "Cache value serialization failed",
+                    key=key,
+                    error=str(e)
+                )
+                return False
+            
+            # SET with timeout protection
+            await asyncio.wait_for(
+                self._client.setex(prefixed_key, ttl, serialized),
+                timeout=self.SET_TIMEOUT
+            )
+            
+            CACHE_HIT_RATE.labels(operation='set', result='success').inc()
+            logger.debug("cache_set", key=key, ttl=ttl)
             return True
+        
+        except asyncio.TimeoutError:
+            CACHE_HIT_RATE.labels(operation='set', result='timeout').inc()
+            logger.warning(
+                "Cache SET timeout",
+                key=key,
+                timeout=self.SET_TIMEOUT
+            )
+            return False
+        
         except Exception as e:
-            logger.warning("Cache set failed", key=key, error=str(e))
+            CACHE_HIT_RATE.labels(operation='set', result='error').inc()
+            logger.warning(
+                "Cache SET failed",
+                key=key,
+                error=str(e),
+                error_type=type(e).__name__
+            )
             return False
     
     async def delete(self, key: str) -> bool:
