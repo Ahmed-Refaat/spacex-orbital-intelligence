@@ -8,6 +8,7 @@ import { getSatelliteOrbit } from '@/services/api'
 
 const EARTH_RADIUS = 6.371
 const SCALE_FACTOR = EARTH_RADIUS / 6371
+const ALTITUDE_SCALE = 0.015 // Same scaling as Satellites.tsx for consistency
 
 interface OrbitPoint {
   t: string
@@ -28,14 +29,17 @@ export function OrbitPath() {
     staleTime: 60000,
   })
 
-  // Convert orbit points to 3D coordinates
+  // Convert orbit points to 3D coordinates (using proportional altitude scaling)
   const orbitPoints = useMemo(() => {
     if (!orbitData?.orbit) return []
     
     return orbitData.orbit.map((point: OrbitPoint) => {
       const phi = (90 - point.lat) * (Math.PI / 180)
       const theta = (point.lon + 180) * (Math.PI / 180)
-      const r = EARTH_RADIUS + point.alt * SCALE_FACTOR * 0.001
+      
+      // Use same proportional altitude scaling as satellites
+      const altitudeOffset = (point.alt / 100) * ALTITUDE_SCALE
+      const r = EARTH_RADIUS + altitudeOffset
 
       return new THREE.Vector3(
         -r * Math.sin(phi) * Math.cos(theta),

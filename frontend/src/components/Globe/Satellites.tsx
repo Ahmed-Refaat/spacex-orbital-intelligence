@@ -4,8 +4,22 @@ import * as THREE from 'three'
 import { useStore } from '@/stores/useStore'
 import type { SatellitePosition } from '@/types'
 
-const EARTH_RADIUS = 6.371
+const EARTH_RADIUS = 6.371 // Earth radius in scene units
 const SCALE_FACTOR = EARTH_RADIUS / 6371 // Scale to our Earth
+
+/**
+ * ALTITUDE_SCALE: Proportional altitude scaling for visual clarity
+ * Makes altitude differences clearly visible while maintaining mathematical coherence:
+ * - <400km satellites: closest to Earth (green)
+ * - 400-600km: medium distance (blue - Starlink range)
+ * - 600-800km: farther out (yellow - higher LEO)
+ * - >800km: very far (red - high altitude)
+ * 
+ * Formula: visual_radius = EARTH_RADIUS + (altitude_km / 100) * ALTITUDE_SCALE
+ * Example: 400km sat = 6.371 + 4 * 0.015 = 6.431 (visible difference)
+ *          800km sat = 6.371 + 8 * 0.015 = 6.491 (clearly farther)
+ */
+const ALTITUDE_SCALE = 0.015 // Enhanced altitude visibility (1.5% of Earth radius per 100km)
 
 interface SatellitesProps {
   positions: SatellitePosition[]
@@ -23,12 +37,15 @@ export function Satellites({ positions }: SatellitesProps) {
     )
   }, [positions, altitudeRange])
 
-  // Convert lat/lon/alt to 3D coordinates
+  // Convert lat/lon/alt to 3D coordinates with proportional altitude
   const satelliteData = useMemo(() => {
     return filteredPositions.map(sat => {
       const phi = (90 - sat.lat) * (Math.PI / 180)
       const theta = (sat.lon + 180) * (Math.PI / 180)
-      const r = EARTH_RADIUS + sat.alt * SCALE_FACTOR * 0.001 // Scale altitude
+      
+      // Proportional altitude scaling: visible difference between altitude bands
+      const altitudeOffset = (sat.alt / 100) * ALTITUDE_SCALE
+      const r = EARTH_RADIUS + altitudeOffset
 
       return {
         ...sat,
@@ -106,7 +123,10 @@ export function SelectedSatelliteHighlight() {
 
   const phi = (90 - lat) * (Math.PI / 180)
   const theta = (lon + 180) * (Math.PI / 180)
-  const r = EARTH_RADIUS + alt * SCALE_FACTOR * 0.001
+  
+  // Use same proportional altitude scaling as main satellites
+  const altitudeOffset = (alt / 100) * ALTITUDE_SCALE
+  const r = EARTH_RADIUS + altitudeOffset
 
   const x = -r * Math.sin(phi) * Math.cos(theta)
   const y = r * Math.cos(phi)
