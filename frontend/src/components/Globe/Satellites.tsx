@@ -5,7 +5,6 @@ import { useStore } from '@/stores/useStore'
 import type { SatellitePosition } from '@/types'
 
 const EARTH_RADIUS = 6.371 // Earth radius in scene units
-const SCALE_FACTOR = EARTH_RADIUS / 6371 // Scale to our Earth
 
 /**
  * ALTITUDE_SCALE: Proportional altitude scaling for visual clarity

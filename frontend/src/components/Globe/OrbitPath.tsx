@@ -7,7 +7,6 @@ import { useStore } from '@/stores/useStore'
 import { getSatelliteOrbit } from '@/services/api'
 
 const EARTH_RADIUS = 6.371
-const SCALE_FACTOR = EARTH_RADIUS / 6371
 const ALTITUDE_SCALE = 0.015 // Same scaling as Satellites.tsx for consistency
 
 interface OrbitPoint {
