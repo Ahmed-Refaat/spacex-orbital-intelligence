@@ -1,115 +1,291 @@
-# Load Testing - SpaceX Orbital Intelligence
+# Load Testing
 
-## Prerequisites
+Performance testing under various load conditions.
 
-```bash
-# Install k6
-snap install k6
+## Tools
 
-# Or via apt
-curl -sS https://dl.k6.io/key.gpg | sudo apt-key add -
-echo "deb https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
-sudo apt update && sudo apt install k6
-```
+- **k6**: JavaScript-based, great for realistic scenarios
+- **Locust**: Python-based, easy to write complex tests
 
-## Running Tests
+## k6 Load Tests
 
-### API Load Tests
+### Install
 
 ```bash
-# Smoke test (1 VU, 30s) - Quick validation
-k6 run -e SCENARIO=smoke k6_load_test.js
+# macOS
+brew install k6
 
-# Load test (50 VUs, 5min) - Normal production load
-k6 run -e SCENARIO=load k6_load_test.js
-
-# Stress test (200 VUs, 2min) - Find breaking point
-k6 run -e SCENARIO=stress k6_load_test.js
-
-# Spike test (0→300→0 VUs) - Traffic bursts
-k6 run -e SCENARIO=spike k6_load_test.js
-
-# Soak test (50 VUs, 10min) - Memory leaks, degradation
-k6 run -e SCENARIO=soak k6_load_test.js
+# Linux
+sudo gpg -k
+sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+sudo apt-get update
+sudo apt-get install k6
 ```
 
-### WebSocket Load Tests
+### Smoke Test (baseline)
 
+```javascript
+// smoke.js
+import http from 'k6/http';
+import { check, sleep } from 'k6';
+
+export const options = {
+  vus: 10,           // 10 virtual users
+  duration: '30s',   // 30 seconds
+  thresholds: {
+    http_req_duration: ['p(95)<500'], // 95% of requests < 500ms
+    http_req_failed: ['rate<0.01'],   // Error rate < 1%
+  },
+};
+
+export default function () {
+  // Health check
+  let res = http.get('https://spacex.ericcesar.com/health');
+  check(res, {
+    'status is 200': (r) => r.status === 200,
+    'satellites loaded': (r) => JSON.parse(r.body).satellites_loaded > 0,
+  });
+  
+  // API call
+  res = http.get('https://spacex.ericcesar.com/api/v1/satellites/positions');
+  check(res, {
+    'status is 200': (r) => r.status === 200,
+    'response time OK': (r) => r.timings.duration < 1000,
+  });
+  
+  sleep(1);
+}
+```
+
+Run:
 ```bash
-# Test 500 concurrent WebSocket connections
-k6 run k6_websocket_test.js
+k6 run smoke.js
 ```
 
-### Custom Configuration
+### Load Test (sustained)
 
+```javascript
+// load.js
+import http from 'k6/http';
+import { check, sleep } from 'k6';
+
+export const options = {
+  stages: [
+    { duration: '2m', target: 100 },  // Ramp up to 100 users
+    { duration: '5m', target: 100 },  // Stay at 100 users
+    { duration: '2m', target: 200 },  // Ramp up to 200
+    { duration: '5m', target: 200 },  // Stay at 200
+    { duration: '2m', target: 0 },    // Ramp down
+  ],
+  thresholds: {
+    http_req_duration: ['p(99)<2000'],  // 99% < 2s
+    http_req_failed: ['rate<0.05'],     // Error rate < 5%
+  },
+};
+
+export default function () {
+  const res = http.get('https://spacex.ericcesar.com/api/v1/satellites/positions');
+  check(res, {
+    'status is 200': (r) => r.status === 200,
+  });
+  sleep(Math.random() * 3 + 1);  // 1-4 seconds
+}
+```
+
+### Stress Test (breaking point)
+
+```javascript
+// stress.js
+export const options = {
+  stages: [
+    { duration: '2m', target: 100 },
+    { duration: '5m', target: 200 },
+    { duration: '2m', target: 300 },
+    { duration: '5m', target: 400 },
+    { duration: '2m', target: 500 },  // Find breaking point
+    { duration: '5m', target: 0 },
+  ],
+};
+```
+
+### Spike Test (sudden traffic)
+
+```javascript
+// spike.js
+export const options = {
+  stages: [
+    { duration: '10s', target: 100 },
+    { duration: '1m', target: 2000 },  // Sudden spike
+    { duration: '10s', target: 100 },
+    { duration: '3m', target: 100 },
+    { duration: '10s', target: 0 },
+  ],
+};
+```
+
+### WebSocket Test
+
+```javascript
+// websocket.js
+import ws from 'k6/ws';
+import { check } from 'k6';
+
+export const options = {
+  vus: 100,
+  duration: '5m',
+};
+
+export default function () {
+  const url = 'wss://spacex.ericcesar.com/ws/positions';
+  
+  const res = ws.connect(url, {}, function (socket) {
+    socket.on('open', () => console.log('WebSocket opened'));
+    
+    socket.on('message', (data) => {
+      const msg = JSON.parse(data);
+      check(msg, {
+        'message type is positions': (m) => m.type === 'positions',
+        'has satellite data': (m) => m.data && m.data.length > 0,
+      });
+    });
+    
+    socket.on('close', () => console.log('WebSocket closed'));
+    socket.on('error', (e) => console.log('WebSocket error:', e));
+    
+    // Keep connection open for 30s
+    socket.setTimeout(() => {
+      socket.close();
+    }, 30000);
+  });
+}
+```
+
+## Locust Load Tests
+
+```python
+# locustfile.py
+from locust import HttpUser, task, between
+
+class SpaceXUser(HttpUser):
+    wait_time = between(1, 3)  # Wait 1-3s between tasks
+    
+    @task(5)  # Weight: 5 (more frequent)
+    def get_positions(self):
+        """Get satellite positions."""
+        self.client.get("/api/v1/satellites/positions")
+    
+    @task(2)
+    def get_satellite_detail(self):
+        """Get specific satellite."""
+        self.client.get("/api/v1/satellites/44000")
+    
+    @task(1)
+    def get_launches(self):
+        """Get launches."""
+        self.client.get("/api/v1/launches?limit=20")
+    
+    def on_start(self):
+        """On user start."""
+        # Check health
+        response = self.client.get("/health")
+        assert response.status_code == 200
+```
+
+Run:
 ```bash
-# Custom base URL
-k6 run -e BASE_URL=https://api.example.com k6_load_test.js
+locust -f locustfile.py --host=https://spacex.ericcesar.com
 
-# With API key
-k6 run -e API_KEY=your-key-here k6_load_test.js
-
-# Custom WebSocket URL
-k6 run -e WS_URL=wss://api.example.com/ws k6_websocket_test.js
+# Headless mode (no web UI)
+locust -f locustfile.py --host=https://spacex.ericcesar.com \
+  --users 100 --spawn-rate 10 --run-time 5m --headless
 ```
 
-## Thresholds (SLOs)
+## Performance Targets
 
-| Metric | Threshold | Description |
-|--------|-----------|-------------|
-| `http_req_duration p(95)` | < 500ms | 95th percentile response time |
-| `http_req_duration p(99)` | < 1000ms | 99th percentile response time |
-| `http_req_failed` | < 1% | Error rate |
-| `propagation_duration p(95)` | < 200ms | Satellite propagation speed |
-| `risk_calculation_duration p(95)` | < 1000ms | Risk analysis speed |
-| `ws_connection_time p(95)` | < 5000ms | WebSocket connection time |
-| `ws_success_rate` | > 99% | WebSocket reliability |
+| Metric | Target | Current |
+|--------|--------|---------|
+| **API Response Time (p95)** | < 500ms | ??? |
+| **API Response Time (p99)** | < 2s | ??? |
+| **Error Rate** | < 0.1% | ??? |
+| **Throughput** | 500 req/s | ??? |
+| **WebSocket Connections** | 1000 concurrent | ??? |
+| **TLE Update Time** | < 30s | ✅ 30s |
 
-## Output Formats
+## Monitoring During Load Tests
 
-```bash
-# JSON output
-k6 run --out json=results.json k6_load_test.js
-
-# InfluxDB (for Grafana)
-k6 run --out influxdb=http://localhost:8086/k6 k6_load_test.js
-
-# Cloud (k6 Cloud)
-k6 cloud k6_load_test.js
+Watch these metrics in Grafana/Prometheus:
+```
+- http_requests_total
+- http_request_duration_seconds
+- websocket_connections_total
+- satellites_loaded
+- cache_hits_total
+- memory_usage_bytes
+- cpu_usage_percent
 ```
 
-## Interpreting Results
+## Infrastructure Scaling
 
-### Good Results ✅
-```
-✓ http_req_duration..............: avg=45.23ms  p(95)=120.5ms
-✓ http_req_failed................: 0.00%
-✓ iterations.....................: 5000
-```
-
-### Bad Results ❌
-```
-✗ http_req_duration..............: avg=850.23ms p(95)=2500ms
-✗ http_req_failed................: 5.23%
-```
-
-## Recommended Test Order
-
-1. **Smoke test** - Verify basic functionality
-2. **Load test** - Establish baseline
-3. **Stress test** - Find limits
-4. **Spike test** - Test recovery
-5. **Soak test** - Check for leaks
-
-## CI/CD Integration
+### Horizontal Scaling
 
 ```yaml
-# GitHub Actions example
-load-test:
-  runs-on: ubuntu-latest
-  steps:
-    - uses: grafana/k6-action@v0.3.1
-      with:
-        filename: tests/load/k6_load_test.js
-        flags: -e SCENARIO=load -e BASE_URL=${{ secrets.API_URL }}
+# docker-compose.prod.yml
+services:
+  backend:
+    deploy:
+      replicas: 3  # 3 backend instances
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
 ```
+
+### Vertical Scaling
+
+Increase resources per instance:
+```yaml
+services:
+  backend:
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 4G
+```
+
+## Results Analysis
+
+After load test, check:
+1. **Response time degradation** - should be linear, not exponential
+2. **Error rate spike** - indicates breaking point
+3. **Memory leaks** - memory should stabilize
+4. **CPU usage** - should not hit 100% for long
+5. **Cache efficiency** - hit rate should be >80%
+
+## Safety Checklist
+
+Before running load tests:
+- [ ] Use staging environment (not production)
+- [ ] Monitoring enabled (Grafana/Prometheus)
+- [ ] Rate limiting configured
+- [ ] Circuit breakers enabled
+- [ ] Database connection pools sized
+- [ ] Redis connection limits set
+- [ ] Team notified
+
+## Expected Bottlenecks
+
+1. **TLE propagation** - CPU-intensive SGP4 calculations
+2. **WebSocket broadcast** - Memory for 1000+ connections
+3. **Database connections** - Pool exhaustion
+4. **External API rate limits** - Celestrak, N2YO quotas
+
+## Optimization Ideas
+
+If bottlenecks found:
+- Cache TLE propagation results (5-10 min TTL)
+- WebSocket delta updates (send only changes)
+- Database read replicas
+- CDN for static assets
+- Redis cluster mode
