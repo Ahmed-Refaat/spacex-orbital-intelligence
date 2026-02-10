@@ -7,6 +7,24 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-green)](https://fastapi.tiangolo.com/)
 [![ANISE](https://img.shields.io/badge/ANISE-0.4-orange)](https://github.com/nyx-space/anise)
 
+## 🔒 Security Notice
+
+**This is a PUBLIC repository.** Before contributing or deploying:
+
+1. **NEVER commit secrets** (passwords, API keys, credentials)
+2. **Read:** [`SECURITY_PUBLIC_REPO.md`](SECURITY_PUBLIC_REPO.md) - Security guidelines
+3. **Setup:** [`SETUP.md`](SETUP.md) - Secure installation guide
+4. **Audit:** [`SECURITY_AUDIT_REPORT.md`](SECURITY_AUDIT_REPORT.md) - Security posture
+
+**Quick setup:**
+```bash
+cp backend/.env.example backend/.env
+# Edit backend/.env with your credentials
+chmod 600 backend/.env
+```
+
+⚠️ **Automated security scanning is active.** Commits with secrets will be blocked.
+
 ## 🎯 Features
 
 ### 🚀 Launch Trajectory Simulation
