@@ -299,9 +299,10 @@ MIT License - See [LICENSE](LICENSE) for details
 ## 🙏 Acknowledgments
 
 - **ANISE** by NYX Space - High-performance astrodynamics toolkit
-- **SpaceX** - Publicly available mission data
+- **NASA NAIF SPICE** - Astrodynamics toolkit foundation
+- **SpaceX** - Publicly available mission data and public launch data
 - **NASA JPL** - DE440s ephemeris and planetary data
-- **Space-Track.org** - Satellite TLE data
+- **Space-Track.org & Open-source TLE providers** - Satellite tracking data
 
 ## 📧 Contact
 
