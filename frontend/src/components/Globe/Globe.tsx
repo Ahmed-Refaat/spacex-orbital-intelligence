@@ -1,9 +1,14 @@
-import { Suspense, useEffect } from 'react'
+import { Suspense, useEffect, useState, useRef } from 'react'
 import { Canvas } from '@react-three/fiber'
-import { OrbitControls, Stars, PerspectiveCamera } from '@react-three/drei'
+import { Stars, PerspectiveCamera } from '@react-three/drei'
 import { Earth } from './Earth'
 import { Satellites, SelectedSatelliteHighlight } from './Satellites'
 import { OrbitPath } from './OrbitPath'
+import { SatelliteTrails } from './SatelliteTrails'
+import { CollisionVisualization, generateMockConjunctions } from './CollisionVisualization'
+import { CinematicCamera, type CinematicCameraControls } from './CinematicCamera'
+import { AtmosphereGlow, AuroraEffect, CityLights } from './AtmosphereGlow'
+import { VisualEffectsPanel } from '../VisualEffectsPanel'
 import { useStore } from '@/stores/useStore'
 import { useOrbitControls } from '@/hooks/useOrbitControls'
 import { Maximize2, Minimize2 } from 'lucide-react'
@@ -11,6 +16,36 @@ import { Maximize2, Minimize2 } from 'lucide-react'
 export function Globe() {
   const { satellites, autoRotate } = useStore()
   const { controlsRef, zoom } = useOrbitControls()
+  const cinematicControlsRef = useRef<CinematicCameraControls | null>(null)
+  
+  // Visual effects state
+  const [visualEffects, setVisualEffects] = useState({
+    trails: false,
+    collisions: false,
+    atmosphere: true,
+    aurora: false,
+    cityLights: false,
+    cinematicMode: 'none' as 'none' | 'overview' | 'constellation' | 'conjunction' | 'launch' | 'imax'
+  })
+
+  // Generate mock conjunctions for demo
+  const conjunctions = visualEffects.collisions && satellites.length > 0
+    ? generateMockConjunctions(satellites)
+    : []
+
+  // Handle cinematic sequence playback
+  const handlePlayCinematic = async (sequence: string) => {
+    if (!cinematicControlsRef.current) return
+    
+    if (sequence === 'imax') {
+      // Play full IMAX sequence
+      await playImaxSequence(cinematicControlsRef.current, setVisualEffects)
+    } else {
+      await cinematicControlsRef.current.playSequence(
+        sequence as 'overview' | 'constellation' | 'conjunction' | 'launch'
+      )
+    }
+  }
 
   return (
     <div className="canvas-container w-full h-full">
@@ -37,31 +72,76 @@ export function Globe() {
           {/* Earth */}
           <Earth />
           
+          {/* Atmosphere effects */}
+          <AtmosphereGlow enabled={visualEffects.atmosphere} />
+          <AuroraEffect enabled={visualEffects.aurora} />
+          <CityLights enabled={visualEffects.cityLights} />
+          
           {/* Satellites */}
           <Satellites positions={satellites} />
+          
+          {/* Satellite trails */}
+          <SatelliteTrails positions={satellites} enabled={visualEffects.trails} />
           
           {/* Selected satellite highlight */}
           <SelectedSatelliteHighlight />
           
           {/* Orbital path visualization */}
           <OrbitPath />
+          
+          {/* Collision visualization */}
+          <CollisionVisualization 
+            conjunctions={conjunctions} 
+            enabled={visualEffects.collisions} 
+          />
         </Suspense>
 
-        {/* Controls */}
-        <OrbitControls 
-          ref={controlsRef}
-          enablePan={false}
-          minDistance={8}
-          maxDistance={50}
-          autoRotate={autoRotate}
-          autoRotateSpeed={0.5}
+        {/* Cinematic Camera Controls */}
+        <CinematicCamera 
+          onControlsReady={(controls) => {
+            cinematicControlsRef.current = controls
+          }}
         />
       </Canvas>
+
+      {/* Visual Effects Control Panel */}
+      <VisualEffectsPanel
+        controls={visualEffects}
+        onChange={setVisualEffects}
+        onPlayCinematic={handlePlayCinematic}
+      />
 
       {/* Overlay UI */}
       <GlobeOverlay zoom={zoom} />
     </div>
   )
+}
+
+// IMAX Mode - Ultimate cinematic sequence
+async function playImaxSequence(
+  controls: CinematicCameraControls,
+  setEffects: React.Dispatch<React.SetStateAction<any>>
+) {
+  // Enable all effects
+  setEffects({
+    trails: true,
+    collisions: true,
+    atmosphere: true,
+    aurora: true,
+    cityLights: true,
+    cinematicMode: 'imax'
+  })
+  
+  // Play sequence
+  await controls.playSequence('overview')
+  await new Promise(resolve => setTimeout(resolve, 1000))
+  await controls.playSequence('constellation')
+  await new Promise(resolve => setTimeout(resolve, 1000))
+  await controls.playSequence('conjunction')
+  await new Promise(resolve => setTimeout(resolve, 1000))
+  
+  // Return to normal
+  setEffects(prev => ({ ...prev, cinematicMode: 'none' }))
 }
 
 function GlobeOverlay({ zoom }: { zoom: (delta: number) => void }) {
