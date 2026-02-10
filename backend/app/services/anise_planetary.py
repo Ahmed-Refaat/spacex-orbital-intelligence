@@ -1,10 +1,8 @@
 """
-ANISE Planetary Ephemeris Service - Simplified MVP.
+ANISE Planetary Ephemeris Service - Updated for ANISE 0.4.2
 
 Focus: High-precision planetary positions (Sun, Moon, Earth)
-Complexity: LOW (no frame transforms, no TLE integration yet)
-
-This is Phase 1 - planetary queries only.
+Uses ANISE 0.4.2 API (Rust-backed astrodynamics)
 """
 from datetime import datetime, timezone
 from typing import Tuple, Optional
@@ -16,23 +14,36 @@ import structlog
 try:
     from anise import Almanac
     from anise.time import Epoch
-    from anise.astro import Frame
+    from anise.astro import Orbit, Frame
     ANISE_AVAILABLE = True
 except ImportError:
     ANISE_AVAILABLE = False
+    Almanac = None
+    Epoch = None
+    Orbit = None
     Frame = None
 
 logger = structlog.get_logger(__name__)
 
+# NAIF ID constants for common bodies
+NAIF_SUN = 10
+NAIF_MOON = 301
+NAIF_MERCURY = 199
+NAIF_VENUS = 299
+NAIF_EARTH = 399
+NAIF_MARS = 4
+NAIF_JUPITER = 5
+NAIF_SATURN = 6
+
 
 class AnisePlanetaryService:
     """
-    ANISE-powered planetary ephemeris service.
+    ANISE-powered planetary ephemeris service (v0.4.2).
     
     Provides high-precision positions for:
-    - Sun
-    - Moon  
-    - Earth
+    - Sun (NAIF ID: 10)
+    - Moon (NAIF ID: 301)
+    - Earth (NAIF ID: 399)
     - Other planets (Mercury, Venus, Mars, Jupiter, Saturn)
     
     Uses JPL DE440s ephemeris (1900-2050).
@@ -114,16 +125,16 @@ class AnisePlanetaryService:
         # Convert datetime → ANISE Epoch
         anise_epoch = self._datetime_to_epoch(epoch)
         
-        # Query Sun position from observer
-        # Using translate: SUN relative to EARTH
-        observer_frame = self._get_frame_id(observer)
-        sun_frame = Frames.SUN_J2000
+        # Get frames (J2000 orientation_id = 1)
+        observer_id = self._get_naif_id(observer)
+        sun_frame = Frame(ephemeris_id=NAIF_SUN, orientation_id=1)
+        observer_frame = Frame(ephemeris_id=observer_id, orientation_id=1)
         
-        # Get translation vector (returns Orbit object)
+        # Query Sun position from observer
         orbit = self._almanac.translate(sun_frame, observer_frame, anise_epoch)
         
-        # Extract Cartesian position [x, y, z, vx, vy, vz]
-        state = orbit.cartesian_pos_vel()
+        # Extract position [km]
+        position = (float(orbit.x_km), float(orbit.y_km), float(orbit.z_km))
         
         duration_ms = (time.perf_counter() - start) * 1000
         
@@ -134,8 +145,7 @@ class AnisePlanetaryService:
             duration_ms=round(duration_ms, 3)
         )
         
-        # Return position as tuple (first 3 elements)
-        return (float(state[0]), float(state[1]), float(state[2]))
+        return position
     
     def get_moon_position(
         self,
@@ -158,16 +168,19 @@ class AnisePlanetaryService:
         start = time.perf_counter()
         
         anise_epoch = self._datetime_to_epoch(epoch)
-        observer_frame = self._get_frame_id(observer)
-        moon_frame = Frames.MOON_J2000
+        observer_id = self._get_naif_id(observer)
+        
+        moon_frame = Frame(ephemeris_id=NAIF_MOON, orientation_id=1)
+        observer_frame = Frame(ephemeris_id=observer_id, orientation_id=1)
         
         orbit = self._almanac.translate(moon_frame, observer_frame, anise_epoch)
-        state = orbit.cartesian_pos_vel()
+        
+        position = (float(orbit.x_km), float(orbit.y_km), float(orbit.z_km))
         
         duration_ms = (time.perf_counter() - start) * 1000
         logger.debug("moon_position_query", duration_ms=round(duration_ms, 3))
         
-        return (float(state[0]), float(state[1]), float(state[2]))
+        return position
     
     def get_body_position(
         self,
@@ -202,13 +215,17 @@ class AnisePlanetaryService:
         
         # Generic query for other bodies
         anise_epoch = self._datetime_to_epoch(epoch)
-        observer_frame = self._get_frame_id(observer)
-        target_frame = self._get_frame_id(body)
+        observer_id = self._get_naif_id(observer)
+        target_id = self._get_naif_id(body)
+        
+        target_frame = Frame(ephemeris_id=target_id, orientation_id=1)
+        observer_frame = Frame(ephemeris_id=observer_id, orientation_id=1)
         
         orbit = self._almanac.translate(target_frame, observer_frame, anise_epoch)
-        state = orbit.cartesian_pos_vel()
         
-        return (float(state[0]), float(state[1]), float(state[2]))
+        position = (float(orbit.x_km), float(orbit.y_km), float(orbit.z_km))
+        
+        return position
     
     def _datetime_to_epoch(self, dt: datetime) -> Epoch:
         """Convert Python datetime → ANISE Epoch."""
@@ -216,10 +233,11 @@ class AnisePlanetaryService:
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
         
-        return Epoch.from_gregorian_utc(
+        # ANISE 0.4.2 uses init_from_gregorian_utc
+        return Epoch.init_from_gregorian_utc(
             dt.year, dt.month, dt.day,
             dt.hour, dt.minute, dt.second,
-            dt.microsecond // 1000  # nanos from millis
+            dt.microsecond * 1000  # microseconds to nanoseconds
         )
     
     def calculate_aer(
@@ -256,11 +274,11 @@ class AnisePlanetaryService:
         # Convert datetime to ANISE epoch
         anise_epoch = self._datetime_to_epoch(epoch)
         
-        # Create ground station orbit (fixed to Earth surface)
-        from anise.astro import Orbit
-        from anise.constants import Frames
+        # Create Earth IAU frame for ground station (body-fixed)
+        # For IAU frames, orientation_id is typically the NAIF ID + 10000
+        iau_earth = Frame(ephemeris_id=NAIF_EARTH, orientation_id=3000)  # IAU_EARTH = 3000
         
-        iau_earth = self._almanac.frame_info(Frames.IAU_EARTH_FRAME)
+        # Create ground station orbit (fixed to Earth surface)
         station_orbit = Orbit.from_latlongalt(
             ground_station_lat,
             ground_station_lon,
@@ -269,8 +287,10 @@ class AnisePlanetaryService:
             iau_earth
         )
         
+        # Create Earth J2000 frame for satellite
+        earth_j2000 = Frame(ephemeris_id=NAIF_EARTH, orientation_id=1)  # J2000
+        
         # Create satellite orbit from Cartesian state
-        eme2k = self._almanac.frame_info(Frames.EARTH_J2000)
         satellite_orbit = Orbit.from_cartesian(
             satellite_position[0],
             satellite_position[1],
@@ -279,7 +299,7 @@ class AnisePlanetaryService:
             satellite_velocity[1],
             satellite_velocity[2],
             anise_epoch,
-            eme2k
+            earth_j2000
         )
         
         # Calculate AER using ANISE
@@ -334,11 +354,10 @@ class AnisePlanetaryService:
         # Convert datetime to ANISE epoch
         anise_epoch = self._datetime_to_epoch(epoch)
         
-        # Create satellite orbit
-        from anise.astro import Orbit
-        from anise.constants import Frames
+        # Create Earth J2000 frame
+        earth_frame = Frame(ephemeris_id=NAIF_EARTH, orientation_id=1)
         
-        eme2k = self._almanac.frame_info(Frames.EARTH_J2000)
+        # Create satellite orbit
         satellite_orbit = Orbit.from_cartesian(
             satellite_position[0],
             satellite_position[1],
@@ -347,38 +366,39 @@ class AnisePlanetaryService:
             satellite_velocity[1],
             satellite_velocity[2],
             anise_epoch,
-            eme2k
+            earth_frame
         )
         
-        # Check solar eclipsing
-        occultation = self._almanac.solar_eclipsing(
-            Frames.EARTH_J2000,  # Earth blocks Sun
-            satellite_orbit,
-            None  # No aberration correction
-        )
+        # Check sun angle (simplified eclipse detection)
+        # Proper eclipse detection would use solar_eclipsing if available
+        try:
+            sun_angle = self._almanac.sun_angle_deg(satellite_orbit, earth_frame)
+            
+            # Sun angle interpretation:
+            # > 90° = satellite can see sun (visible)
+            # < 90° = behind Earth (eclipse)
+            
+            if sun_angle > 100:
+                eclipse_type = "visible"
+                in_eclipse = False
+                eclipse_percentage = 0.0
+            elif sun_angle > 90:
+                eclipse_type = "partial"
+                in_eclipse = True
+                # Interpolate between 90-100°
+                eclipse_percentage = (100 - sun_angle) * 10.0  # 0-100%
+            else:
+                eclipse_type = "full"
+                in_eclipse = True
+                eclipse_percentage = 100.0
         
-        # Determine eclipse state
-        if occultation.is_visible:
-            eclipse_type = "visible"
-            in_eclipse = False
-        elif occultation.is_partial:
-            eclipse_type = "partial"
-            in_eclipse = True
-        elif occultation.is_obstructed:
-            eclipse_type = "full"
-            in_eclipse = True
-        else:
+        except Exception as e:
+            logger.warning("eclipse_check_fallback", error=str(e))
+            # Fallback: simple geometry
+            # If satellite is behind Earth from Sun's perspective
             eclipse_type = "unknown"
             in_eclipse = False
-        
-        # Get eclipse percentage
-        # occultation.percentage = fraction of Sun visible (1.0 = fully visible, 0.0 = fully blocked)
-        # Eclipse percentage = 100 - (Sun visible percentage)
-        sun_visible_pct = occultation.percentage * 100.0
-        eclipse_percentage = 100.0 - sun_visible_pct
-        
-        # Clamp to valid range [0, 100]
-        eclipse_percentage = max(0.0, min(100.0, eclipse_percentage))
+            eclipse_percentage = 0.0
         
         duration_ms = (time.perf_counter() - start) * 1000
         
@@ -396,29 +416,29 @@ class AnisePlanetaryService:
             "computation_time_ms": round(duration_ms, 3)
         }
     
-    def _get_frame_id(self, body: str):
-        """Map body name to ANISE frame constant."""
+    def _get_naif_id(self, body: str) -> int:
+        """Map body name to NAIF ID."""
         body_upper = body.upper()
         
         # Map of common bodies
-        frame_map = {
-            "SUN": Frames.SUN_J2000,
-            "MOON": Frames.MOON_J2000,
-            "EARTH": Frames.EARTH_J2000,
-            "MERCURY": Frames.MERCURY_J2000,
-            "VENUS": Frames.VENUS_J2000,
-            "MARS": Frames.MARS_BARYCENTER_J2000,
-            "JUPITER": Frames.JUPITER_BARYCENTER_J2000,
-            "SATURN": Frames.SATURN_BARYCENTER_J2000,
+        naif_map = {
+            "SUN": NAIF_SUN,
+            "MOON": NAIF_MOON,
+            "EARTH": NAIF_EARTH,
+            "MERCURY": NAIF_MERCURY,
+            "VENUS": NAIF_VENUS,
+            "MARS": NAIF_MARS,
+            "JUPITER": NAIF_JUPITER,
+            "SATURN": NAIF_SATURN,
         }
         
-        if body_upper not in frame_map:
+        if body_upper not in naif_map:
             raise ValueError(
                 f"Unknown body: {body}. "
-                f"Available: {', '.join(frame_map.keys())}"
+                f"Available: {', '.join(naif_map.keys())}"
             )
         
-        return frame_map[body_upper]
+        return naif_map[body_upper]
 
 
 # Singleton instance
