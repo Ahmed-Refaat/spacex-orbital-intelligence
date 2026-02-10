@@ -40,10 +40,13 @@ curl -s https://api.github.com/repos/e-cesar9/spacex-orbital-intelligence | jq -
 # OUTPUT: false
 
 # Credentials exposés dans l'historique git:
-- REDIS_PASSWORD=9qdvOIaYGR-YP_LrmvThfs3XQLyrSpJzU5zVgs3dzDw
-- POSTGRES_PASSWORD=oKxgcu9pM0EK9-uOg3PSI2_lFplWAIhX-7VJVxeGb14
-- SPACETRACK_USERNAME=e.cesar.pro@gmail.com
-- SPACETRACK_PASSWORD=54FG6yhb7fb.54U
+- REDIS_PASSWORD=[REDACTED - 43 chars]
+- POSTGRES_PASSWORD=[REDACTED - 43 chars]
+- SPACETRACK_USERNAME=[REDACTED - email]
+- SPACETRACK_PASSWORD=[REDACTED]
+
+# ⚠️ Les credentials ci-dessus ont été INVALIDES et CHANGÉS
+# Ce rapport documente la vulnérabilité, pas les secrets actuels
 ```
 
 **Conséquences pour une entreprise spatiale:**
@@ -171,7 +174,7 @@ environment:
 ```bash
 # Attaquant voit le docker-compose.yml sur GitHub
 # Il tente une connexion avec les defaults:
-redis-cli -h spacex.ericcesar.com -p 6379 -a "spacex_redis_secure_2024"
+redis-cli -h [YOUR_DOMAIN] -p 6379 -a "[DEFAULT_PASSWORD_FROM_CODE]"
 # → ACCÈS ACCORDÉ si .env n'est pas défini
 ```
 

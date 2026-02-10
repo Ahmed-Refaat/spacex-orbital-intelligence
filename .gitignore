@@ -17,10 +17,21 @@ build/
 *.swp
 *.swo
 
-# Environment
+# Environment & Secrets
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
+*.env
+secrets/
+credentials/
+*.pem
+*.key
+*.p12
+*.jks
+id_rsa*
+*.crt
+*.cer
+*.pfx
 
 # Logs
 *.log
