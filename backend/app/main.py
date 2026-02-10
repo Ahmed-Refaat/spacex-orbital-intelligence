@@ -154,6 +154,10 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+# Request ID middleware - MUST be first for tracing
+from app.middleware.request_id import RequestIDMiddleware
+app.add_middleware(RequestIDMiddleware)
+
 # CORS middleware - restricted origins
 app.add_middleware(
     CORSMiddleware,
