@@ -19,6 +19,7 @@ import redis.asyncio as redis
 import hashlib
 import json
 import structlog
+from circuitbreaker import circuit
 
 logger = structlog.get_logger()
 
@@ -170,15 +171,21 @@ class CelestrakFallback:
             logger.error("Celestrak fetch failed", dataset=dataset, error=str(e))
             raise
     
+    @circuit(failure_threshold=5, recovery_timeout=60, expected_exception=httpx.HTTPError)
     async def fetch_starlink_tle(self) -> dict[str, tuple[str, str, str]]:
         """
         Fetch Starlink TLEs from Celestrak in JSON format.
+        
+        Circuit breaker: Fails fast after 5 consecutive failures, recovers after 60s.
         
         Returns:
             Dict mapping NORAD ID to (name, line1, line2)
             
         Caching: 24 hours
         Rate limit: Max 1 request per hour
+        
+        Raises:
+            CircuitBreakerError: When circuit is open
         """
         params = {
             "GROUP": "starlink",
@@ -186,9 +193,12 @@ class CelestrakFallback:
         }
         return await self._fetch_with_cache("starlink", params)
     
+    @circuit(failure_threshold=5, recovery_timeout=60, expected_exception=httpx.HTTPError)
     async def fetch_active_satellites(self, limit: int = 1000) -> dict[str, tuple[str, str, str]]:
         """
         Fetch active satellites from Celestrak.
+        
+        Circuit breaker: Fails fast after 5 consecutive failures, recovers after 60s.
         
         Args:
             limit: Maximum number of satellites to fetch
@@ -198,6 +208,9 @@ class CelestrakFallback:
             
         Caching: 24 hours
         Rate limit: Max 1 request per hour
+        
+        Raises:
+            CircuitBreakerError: When circuit is open
         """
         params = {
             "GROUP": "active",
