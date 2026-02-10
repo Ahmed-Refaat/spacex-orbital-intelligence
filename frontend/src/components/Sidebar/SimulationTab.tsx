@@ -365,22 +365,22 @@ function LaunchSimulator() {
         <div className="flex items-start gap-2 mb-2">
           <Info size={14} className="text-blue-400 mt-0.5 flex-shrink-0" />
           <div className="text-xs text-blue-200">
-            <strong className="text-blue-300">Simulation Monte-Carlo</strong>
+            <strong className="text-blue-300">Monte Carlo Simulation</strong>
           </div>
         </div>
         <div className="text-xs text-gray-300 space-y-1.5 ml-5">
           <p>
-            <strong className="text-white">Fusée:</strong> Single-Stage-To-Orbit (SSTO) théorique<br />
-            <span className="text-gray-400">• Thrust: 8 MN • Isp: 360s • Masse: 615t</span>
+            <strong className="text-white">Vehicle:</strong> Theoretical Single-Stage-To-Orbit (SSTO)<br />
+            <span className="text-gray-400">• Thrust: 8 MN • Isp: 360s • Mass: 615t</span>
           </p>
           <p>
-            <strong className="text-white">Mission:</strong> Atteindre 180km d'altitude + 7.5 km/s de vitesse orbitale
+            <strong className="text-white">Mission:</strong> Reach 180km altitude + 7.5 km/s orbital velocity
           </p>
           <p>
-            <strong className="text-white">Monte-Carlo:</strong> Teste {params.n_runs.toLocaleString()}x avec incertitudes aléatoires (±{(params.thrust_variance * 100).toFixed(0)}% thrust, ±3% Isp, ±2% masse)
+            <strong className="text-white">Monte Carlo:</strong> Tests {params.n_runs.toLocaleString()}x with random uncertainties (±{(params.thrust_variance * 100).toFixed(0)}% thrust, ±3% Isp, ±2% mass)
           </p>
           <p className="text-yellow-300/80">
-            ⚠️ SSTO est physiquement très difficile - success rate faible est réaliste
+            ⚠️ SSTO is physically very challenging - low success rate is realistic
           </p>
         </div>
       </div>
@@ -389,7 +389,7 @@ function LaunchSimulator() {
       <div className="space-y-3 mb-4">
         <div>
           <label className="text-xs text-gray-400 mb-1 block">
-            Incertitude Thrust (±{(params.thrust_variance * 100).toFixed(0)}%)
+            Thrust Uncertainty (±{(params.thrust_variance * 100).toFixed(0)}%)
           </label>
           <input
             type="range"
@@ -405,7 +405,7 @@ function LaunchSimulator() {
 
         <div>
           <label className="text-xs text-gray-400 mb-1 block">
-            Nombre de tests: {params.n_runs.toLocaleString()}
+            Number of runs: {params.n_runs.toLocaleString()}
           </label>
           <input
             type="range"
@@ -431,14 +431,14 @@ function LaunchSimulator() {
         }`}
       >
         <PlayCircle size={16} />
-        {running ? 'Simulation en cours...' : 'Lancer Simulation'}
+        {running ? 'Running simulation...' : 'Run Simulation'}
       </button>
 
       {/* Results */}
       {result && result.status === 'complete' && (
         <div className="mt-4 space-y-3">
           <div className="bg-spacex-card rounded p-3">
-            <div className="text-xs text-gray-400 mb-1">Taux de Succès</div>
+            <div className="text-xs text-gray-400 mb-1">Success Rate</div>
             <div className={`text-2xl font-bold ${
               (result.success_rate || 0) > 0.9 ? 'text-green-400' :
               (result.success_rate || 0) > 0.7 ? 'text-yellow-400' : 
@@ -447,21 +447,21 @@ function LaunchSimulator() {
               {typeof result.success_rate === 'number' ? (result.success_rate * 100).toFixed(1) : '0.0'}%
             </div>
             <div className="text-xs text-gray-500 mt-1">
-              {result.success_count || 0} / {result.total_runs || 0} lancements réussis
+              {result.success_count || 0} / {result.total_runs || 0} successful launches
             </div>
           </div>
 
           {/* Failure Modes */}
           {result.failure_modes && Object.keys(result.failure_modes).length > 0 && (
             <div className="bg-spacex-card rounded p-3">
-              <div className="text-xs text-gray-400 mb-2">Modes d'Échec</div>
+              <div className="text-xs text-gray-400 mb-2">Failure Modes</div>
               {Object.entries(result.failure_modes).map(([mode, count]: [string, any]) => (
                 <div key={mode} className="flex justify-between text-xs mb-1">
                   <span className="text-gray-500">
-                    {mode === 'fuel_depletion' ? '⛽ Plus de carburant' :
-                     mode === 'insufficient_velocity' ? '🚀 Vitesse insuffisante' :
-                     mode === 'structural_failure' ? '💥 Rupture structure' :
-                     mode === 'crashed' ? '💀 Crash' :
+                    {mode === 'fuel_depletion' ? '⛽ Fuel depleted' :
+                     mode === 'insufficient_velocity' ? '🚀 Insufficient velocity' :
+                     mode === 'structural_failure' ? '💥 Structural failure' :
+                     mode === 'crashed' ? '💀 Crashed' :
                      mode.replace(/_/g, ' ')}
                   </span>
                   <span className="text-white">{count}</span>
