@@ -8,6 +8,8 @@ Space-Track is the authoritative source for:
 - Decay predictions
 
 Register for free at: https://www.space-track.org/auth/createAccount
+
+COMPLIANCE: Uses centralized session manager to comply with Space-Track API policy.
 """
 import httpx
 from datetime import datetime, timezone, timedelta
@@ -16,6 +18,7 @@ from dataclasses import dataclass
 import os
 
 from app.core.config import get_settings
+from app.services.spacetrack_session import session_manager
 
 BASE_URL = "https://www.space-track.org"
 
@@ -127,73 +130,27 @@ class SpaceTrackClient:
     """
     Client for Space-Track.org API.
     
-    Requires credentials set in environment:
-    - SPACETRACK_USER
-    - SPACETRACK_PASSWORD
+    Uses centralized session manager for compliance with API usage policy:
+    - Session reuse (2h validity, refresh at 1h50min)
+    - GP data caching (minimum 1h)
+    - No unnecessary login/logout cycles
     
     Rate limits: 30 requests per minute, 300 per hour
     """
     
     def __init__(self):
         self.settings = get_settings()
-        self._client: Optional[httpx.AsyncClient] = None
-        self._authenticated = False
-        self._cookies = None
-        
-        # Get credentials from settings (loads from .env)
-        self.username = self.settings.spacetrack_username
-        self.password = self.settings.spacetrack_password
+        # Use centralized session manager
+        self.session = session_manager
     
     @property
     def is_configured(self) -> bool:
         """Check if credentials are configured."""
-        return bool(self.username and self.password)
-    
-    async def _get_client(self) -> httpx.AsyncClient:
-        if self._client is None:
-            self._client = httpx.AsyncClient(
-                base_url=BASE_URL,
-                timeout=30.0,
-                follow_redirects=True
-            )
-        return self._client
+        return bool(self.settings.spacetrack_username and self.settings.spacetrack_password)
     
     async def close(self):
-        if self._client:
-            await self._client.aclose()
-            self._client = None
-            self._authenticated = False
-    
-    async def _authenticate(self) -> bool:
-        """Authenticate with Space-Track."""
-        if not self.is_configured:
-            return False
-        
-        if self._authenticated and self._cookies:
-            return True
-        
-        client = await self._get_client()
-        
-        try:
-            response = await client.post(
-                "/ajaxauth/login",
-                data={
-                    "identity": self.username,
-                    "password": self.password
-                }
-            )
-            
-            if response.status_code == 200:
-                self._cookies = response.cookies
-                self._authenticated = True
-                return True
-            else:
-                print(f"Space-Track auth failed: {response.status_code}")
-                return False
-                
-        except Exception as e:
-            print(f"Space-Track auth error: {e}")
-            return False
+        """Close is handled by session manager lifecycle."""
+        pass
     
     async def get_cdm_for_starlink(
         self,
@@ -207,13 +164,12 @@ class SpaceTrackClient:
             hours_ahead: Look ahead window in hours
             min_probability: Minimum collision probability
         """
-        if not await self._authenticate():
+        if not self.is_configured:
             return []
-        
-        client = await self._get_client()
         
         # Query CDM data for Starlink
         # CDM class: https://www.space-track.org/basicspacedata/modeldef/class/cdm_public
+        # NOTE: CDM data is time-sensitive, no caching (short TTL)
         
         tca_start = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         tca_end = (datetime.now(timezone.utc) + timedelta(hours=hours_ahead)).strftime("%Y-%m-%d")
@@ -229,10 +185,11 @@ class SpaceTrackClient:
                 f"/format/json"
             )
             
-            response = await client.get(query, cookies=self._cookies)
+            # CDM data changes frequently, use short cache (5 min)
+            response = await self.session.get(query, cache_ttl=300)
             
-            if response.status_code != 200:
-                print(f"Space-Track CDM query failed: {response.status_code}")
+            if not response or response.status_code != 200:
+                print(f"Space-Track CDM query failed: {response.status_code if response else 'No response'}")
                 return []
             
             data = response.json()
@@ -279,10 +236,8 @@ class SpaceTrackClient:
         limit: int = 50
     ) -> list[CDMAlert]:
         """Get all CDM alerts (not just Starlink)."""
-        if not await self._authenticate():
+        if not self.is_configured:
             return []
-        
-        client = await self._get_client()
         
         tca_start = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         tca_end = (datetime.now(timezone.utc) + timedelta(hours=hours_ahead)).strftime("%Y-%m-%d")
@@ -296,9 +251,10 @@ class SpaceTrackClient:
                 f"/format/json"
             )
             
-            response = await client.get(query, cookies=self._cookies)
+            # CDM data changes frequently, use short cache (5 min)
+            response = await self.session.get(query, cache_ttl=300)
             
-            if response.status_code != 200:
+            if not response or response.status_code != 200:
                 return []
             
             data = response.json()
@@ -337,10 +293,8 @@ class SpaceTrackClient:
     
     async def get_tle(self, norad_id: str) -> Optional[dict]:
         """Get latest TLE for a satellite."""
-        if not await self._authenticate():
+        if not self.is_configured:
             return None
-        
-        client = await self._get_client()
         
         try:
             query = (
@@ -351,9 +305,10 @@ class SpaceTrackClient:
                 f"/format/json"
             )
             
-            response = await client.get(query, cookies=self._cookies)
+            # TLE data is GP data - MUST cache for minimum 1 hour
+            response = await self.session.get(query, cache_ttl=3600)
             
-            if response.status_code == 200:
+            if response and response.status_code == 200:
                 data = response.json()
                 return data[0] if data else None
             
@@ -381,11 +336,11 @@ class SpaceTrackClient:
             
         Space-Track GP class documentation:
         https://www.space-track.org/basicspacedata/modeldef/class/gp
-        """
-        if not await self._authenticate():
-            return None
         
-        client = await self._get_client()
+        COMPLIANCE: GP data is cached for minimum 1 hour per Space-Track policy.
+        """
+        if not self.is_configured:
+            return None
         
         try:
             # Build query for GP (General Perturbations) class
@@ -408,14 +363,11 @@ class SpaceTrackClient:
                     f"/format/{format}"
                 )
             
-            response = await client.get(query, cookies=self._cookies)
+            # CRITICAL: GP ephemerides MUST be cached for minimum 1 hour
+            response = await self.session.get(query, cache_ttl=3600)
             
-            if response.status_code == 200:
-                if format == "json":
-                    return response.text
-                else:
-                    # XML format
-                    return response.text
+            if response and response.status_code == 200:
+                return response.text
             
             return None
             
@@ -437,11 +389,11 @@ class SpaceTrackClient:
             
         Returns:
             OMM data as string
+            
+        COMPLIANCE: GP data is cached for minimum 1 hour per Space-Track policy.
         """
-        if not await self._authenticate():
+        if not self.is_configured:
             return None
-        
-        client = await self._get_client()
         
         try:
             query = (
@@ -453,9 +405,10 @@ class SpaceTrackClient:
                 f"/format/{format}"
             )
             
-            response = await client.get(query, cookies=self._cookies)
+            # CRITICAL: GP ephemerides MUST be cached for minimum 1 hour
+            response = await self.session.get(query, cache_ttl=3600)
             
-            if response.status_code == 200:
+            if response and response.status_code == 200:
                 return response.text
             
             return None
@@ -469,11 +422,12 @@ class SpaceTrackClient:
         Fetch satellite catalog entries for given NORAD IDs.
         
         Returns a dict mapping NORAD ID to catalog entry.
+        
+        NOTE: Catalog data changes infrequently, cached for 24 hours.
         """
-        if not await self._authenticate() or not norad_ids:
+        if not self.is_configured or not norad_ids:
             return {}
         
-        client = await self._get_client()
         result = {}
         
         try:
@@ -486,9 +440,10 @@ class SpaceTrackClient:
                 f"/format/json"
             )
             
-            response = await client.get(query, cookies=self._cookies)
+            # Catalog data rarely changes - cache for 24 hours
+            response = await self.session.get(query, cache_ttl=86400)
             
-            if response.status_code == 200:
+            if response and response.status_code == 200:
                 data = response.json()
                 
                 for item in data:

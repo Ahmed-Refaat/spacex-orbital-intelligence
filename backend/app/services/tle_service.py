@@ -1,50 +1,38 @@
-"""TLE data fetching and management service."""
-import httpx
+"""
+TLE data fetching and management service.
+
+COMPLIANCE: Uses centralized session manager to comply with Space-Track API policy.
+"""
 import asyncio
 from datetime import datetime, timedelta
 from typing import Optional
 import structlog
 from circuitbreaker import circuit
+import httpx
 
 from app.core.config import get_settings
 from app.services.orbital_engine import orbital_engine
+from app.services.spacetrack_session import session_manager
 
 logger = structlog.get_logger()
 
 
 class TLEService:
-    """Service for fetching and managing TLE data from Space-Track.org."""
+    """
+    Service for fetching and managing TLE data from Space-Track.org.
     
-    SPACETRACK_LOGIN = "https://www.space-track.org/ajaxauth/login"
-    SPACETRACK_BASE = "https://www.space-track.org/basicspacedata/query"
+    Uses centralized session manager for compliance with API policy:
+    - Session reuse (no login/logout per request)
+    - GP data caching (minimum 1 hour)
+    """
     
     def __init__(self):
         self.settings = get_settings()
         self._last_update: Optional[datetime] = None
         self._tle_cache: dict[str, tuple[str, str, str]] = {}  # norad_id -> (name, line1, line2)
         self._update_lock = asyncio.Lock()
-        self._session_cookie = None
-    
-    async def _authenticate(self, client: httpx.AsyncClient) -> bool:
-        """Authenticate with Space-Track.org."""
-        if not self.settings.spacetrack_username or not self.settings.spacetrack_password:
-            logger.error("Space-Track credentials not configured")
-            return False
-        
-        response = await client.post(
-            self.SPACETRACK_LOGIN,
-            data={
-                "identity": self.settings.spacetrack_username,
-                "password": self.settings.spacetrack_password,
-            }
-        )
-        
-        if response.status_code == 200 and "error" not in response.text.lower():
-            logger.info("Space-Track authentication successful")
-            return True
-        
-        logger.error("Space-Track authentication failed", response=response.text[:200])
-        return False
+        # Use centralized session manager
+        self.session = session_manager
     
     @circuit(failure_threshold=3, recovery_timeout=120, expected_exception=httpx.HTTPError)
     async def fetch_tle_data(self, source: str = "starlink") -> dict[str, tuple[str, str, str]]:
@@ -54,28 +42,29 @@ class TLEService:
         Circuit breaker protection:
         - Opens after 3 consecutive failures
         - Stays open for 120 seconds (longer recovery for external API)
+        
+        COMPLIANCE: GP data is cached for minimum 1 hour per Space-Track policy.
         """
         
         # Build query based on source - use JSON format to get names
         if source == "starlink":
-            query = f"{self.SPACETRACK_BASE}/class/gp/OBJECT_NAME/~~STARLINK/orderby/NORAD_CAT_ID/format/json"
+            query = "/basicspacedata/query/class/gp/OBJECT_NAME/~~STARLINK/orderby/NORAD_CAT_ID/format/json"
         elif source == "stations":
-            query = f"{self.SPACETRACK_BASE}/class/gp/OBJECT_TYPE/PAYLOAD/PERIOD/90--95/ECCENTRICITY/<0.01/orderby/NORAD_CAT_ID/limit/100/format/json"
+            query = "/basicspacedata/query/class/gp/OBJECT_TYPE/PAYLOAD/PERIOD/90--95/ECCENTRICITY/<0.01/orderby/NORAD_CAT_ID/limit/100/format/json"
         else:
-            query = f"{self.SPACETRACK_BASE}/class/gp/OBJECT_TYPE/PAYLOAD/DECAY/null-val/orderby/NORAD_CAT_ID/limit/1000/format/json"
+            query = "/basicspacedata/query/class/gp/OBJECT_TYPE/PAYLOAD/DECAY/null-val/orderby/NORAD_CAT_ID/limit/1000/format/json"
         
-        async with httpx.AsyncClient(timeout=120.0, follow_redirects=True) as client:
-            # Authenticate first
-            if not await self._authenticate(client):
-                raise Exception("Failed to authenticate with Space-Track")
-            
-            # Fetch TLE data
-            logger.info("Fetching TLE data from Space-Track", source=source)
-            response = await client.get(query)
-            response.raise_for_status()
-            
-            data = response.json()
-            return self._parse_json_tle(data)
+        # Fetch TLE data using session manager (auto-caches for 1h minimum)
+        logger.info("Fetching TLE data from Space-Track", source=source)
+        
+        # CRITICAL: GP ephemerides MUST be cached for minimum 1 hour
+        response = await self.session.get(query, cache_ttl=3600)
+        
+        if not response or response.status_code != 200:
+            raise Exception(f"Failed to fetch TLE data: {response.status_code if response else 'No response'}")
+        
+        data = response.json()
+        return self._parse_json_tle(data)
     
     def _parse_json_tle(self, data: list) -> dict[str, tuple[str, str, str]]:
         """Parse JSON format TLE data from Space-Track."""
