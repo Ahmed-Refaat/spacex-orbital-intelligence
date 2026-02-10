@@ -65,11 +65,23 @@ export const LaunchesResponseSchema = z.object({
 // Satellite Detail Schema
 export const SatelliteDetailSchema = z.object({
   satellite_id: z.string(),
-  latitude: z.number(),
-  longitude: z.number(),
-  altitude: z.number(),
-  velocity: z.number(),
   timestamp: z.string(),
+  position: z.object({
+    x: z.number(),
+    y: z.number(),
+    z: z.number(),
+  }),
+  velocity: z.object({
+    vx: z.number(),
+    vy: z.number(),
+    vz: z.number(),
+  }),
+  geographic: z.object({
+    latitude: z.number(),
+    longitude: z.number(),
+    altitude: z.number(),
+  }),
+  speed: z.number(),
   name: z.string().optional(),
   tle: z.object({
     line1: z.string().nullable(),
