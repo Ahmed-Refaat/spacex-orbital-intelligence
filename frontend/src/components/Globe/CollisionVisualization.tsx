@@ -1,4 +1,4 @@
-import { useRef, useMemo, useEffect } from 'react'
+import { useRef, useMemo } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { Text } from '@react-three/drei'
@@ -68,14 +68,12 @@ function ConjunctionEffect({ conjunction, time }: { conjunction: Conjunction; ti
   return (
     <group>
       {/* Connecting line between satellites */}
-      <line geometry={lineGeometry}>
-        <lineBasicMaterial
-          color={riskColor}
-          transparent
-          opacity={pulseOpacity}
-          linewidth={3}
-        />
-      </line>
+      <primitive object={new THREE.Line(lineGeometry, new THREE.LineBasicMaterial({
+        color: riskColor,
+        transparent: true,
+        opacity: pulseOpacity,
+        linewidth: 3
+      }))} />
 
       {/* Danger zone sphere */}
       <mesh position={midpoint}>
@@ -91,7 +89,7 @@ function ConjunctionEffect({ conjunction, time }: { conjunction: Conjunction; ti
       {/* Pulsing warning indicator */}
       <mesh position={midpoint} scale={warningScale}>
         <sphereGeometry args={[0.05, 16, 16]} />
-        <meshBasicMaterial
+        <meshStandardMaterial
           color={riskColor}
           transparent
           opacity={0.8}

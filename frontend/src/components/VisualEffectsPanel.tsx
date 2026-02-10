@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Play, Pause, Sparkles, Zap, Camera, Globe } from 'lucide-react'
+import { Play, Sparkles, Zap, Camera, Globe } from 'lucide-react'
 
 interface VisualEffectsControls {
   trails: boolean

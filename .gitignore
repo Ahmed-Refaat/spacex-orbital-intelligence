@@ -48,3 +48,7 @@ htmlcov/
 
 # Docker
 docker-compose.override.yml
+
+# Private documentation
+SPACE_TRACK_COMPLIANCE.md
+docs/private/

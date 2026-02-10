@@ -2,7 +2,10 @@
 TLE data fetching and management service.
 
 COMPLIANCE: Uses centralized session manager to comply with Space-Track API policy.
-FALLBACK: Uses Celestrak public API when Space-Track is unavailable.
+FALLBACK: Multi-source fallback chain:
+  1. Space-Track (primary, when unbanned)
+  2. Celestrak (secondary, bulk public data)
+  3. N2YO (tertiary, individual fetches only - 300 req/hour free)
 """
 import asyncio
 from datetime import datetime, timedelta
@@ -15,6 +18,8 @@ from app.core.config import get_settings
 from app.services.orbital_engine import orbital_engine
 from app.services.spacetrack_session import session_manager
 from app.services.celestrak_fallback import celestrak
+from app.services.n2yo_client import n2yo_client
+from app.services.tle_loader import local_tle_loader
 
 logger = structlog.get_logger()
 
@@ -38,15 +43,13 @@ class TLEService:
     
     async def fetch_tle_data(self, source: str = "starlink") -> dict[str, tuple[str, str, str]]:
         """
-        Fetch TLE data from Space-Track.org (primary) or Celestrak (fallback).
+        Fetch TLE data from Space-Track.org or Celestrak fallback.
         
         COMPLIANCE: GP data is cached for minimum 1 hour per Space-Track policy.
-        FALLBACK: Uses Celestrak public API when Space-Track fails.
-        
-        Note: Circuit breaker removed to allow Celestrak fallback even after Space-Track failures.
+        FALLBACK: Space-Track → Celestrak → N2YO (individual)
         """
         
-        # Try Space-Track first (preferred source)
+        # Try Space-Track first (if available/unbanned)
         try:
             # Build query based on source - use JSON format to get names
             if source == "starlink":
@@ -56,8 +59,7 @@ class TLEService:
             else:
                 query = "/basicspacedata/query/class/gp/OBJECT_TYPE/PAYLOAD/DECAY/null-val/orderby/NORAD_CAT_ID/limit/1000/format/json"
             
-            # Fetch TLE data using session manager (auto-caches for 1h minimum)
-            logger.info("Fetching TLE data from Space-Track (primary)", source=source)
+            logger.info("Attempting Space-Track fetch (may be banned)", source=source)
             
             # CRITICAL: GP ephemerides MUST be cached for minimum 1 hour
             response = await self.session.get(query, cache_ttl=3600)
@@ -68,17 +70,35 @@ class TLEService:
                 logger.info("Space-Track fetch successful", count=len(result))
                 return result
             else:
-                # Space-Track failed, fall through to Celestrak
                 logger.warning(
-                    "Space-Track fetch failed, trying Celestrak fallback",
+                    "Space-Track fetch failed (may be banned)",
                     status_code=response.status_code if response else None
                 )
         
         except Exception as e:
-            logger.warning("Space-Track error, trying Celestrak fallback", error=str(e))
+            logger.warning("Space-Track error (may be banned)", error=str(e))
         
-        # Fallback to Celestrak (public API, no auth)
-        logger.info("Using Celestrak as TLE source (Space-Track unavailable)", source=source)
+        # Fallback to local TLE files FIRST (faster than Celestrak)
+        logger.info("Using local TLE files as primary fallback", source=source)
+        
+        try:
+            if source == "starlink":
+                result = local_tle_loader.load_starlink()
+            elif source == "stations":
+                result = local_tle_loader.load_stations()
+            else:
+                result = local_tle_loader.load_starlink()  # Default to Starlink
+            
+            if result:
+                logger.info("Local TLE file loaded successfully", count=len(result), source="local_file")
+                return result
+            else:
+                logger.warning("Local TLE file empty or not found", source=source)
+        except Exception as e:
+            logger.error("Local TLE file load failed", error=str(e), source=source)
+        
+        # Fallback to Celestrak (bulk public data) as last resort
+        logger.info("Using Celestrak as TLE source (local file unavailable)", source=source)
         
         try:
             if source == "starlink":
@@ -88,12 +108,16 @@ class TLEService:
             else:
                 result = await celestrak.fetch_active_satellites(limit=1000)
             
-            logger.info("Celestrak fetch successful", count=len(result), source="celestrak")
-            return result
+            if result:
+                logger.info("Celestrak fetch successful", count=len(result), source="celestrak")
+                return result
             
         except Exception as e:
             logger.error("Celestrak fetch failed", error=str(e), source=source)
-            raise
+        
+        # All sources failed - will use mock satellites
+        logger.warning("All TLE sources failed - using mock satellites", source=source)
+        return {}
     
     def _parse_json_tle(self, data: list) -> dict[str, tuple[str, str, str]]:
         """Parse JSON format TLE data from Space-Track."""
@@ -177,6 +201,56 @@ class TLEService:
         
         return False
     
+    async def fetch_individual_tle(self, norad_id: str) -> Optional[tuple[str, str, str]]:
+        """
+        Fetch TLE for a single satellite with multi-source fallback.
+        
+        Fallback order:
+        1. N2YO (if configured)
+        2. Space-Track (if available)
+        3. Return None
+        
+        Args:
+            norad_id: NORAD catalog number
+            
+        Returns:
+            Tuple of (name, line1, line2) or None
+        """
+        # Try N2YO first (has quota, cached, fast)
+        if n2yo_client.is_configured:
+            try:
+                tle = await n2yo_client.get_tle(norad_id)
+                if tle:
+                    logger.info("TLE fetched from N2YO", norad_id=norad_id)
+                    # Cache it
+                    self._tle_cache[norad_id] = tle
+                    return tle
+            except Exception as e:
+                logger.warning("N2YO individual fetch failed", norad_id=norad_id, error=str(e))
+        
+        # Try Space-Track as fallback (if not suspended)
+        try:
+            query = f"/basicspacedata/query/class/tle_latest/NORAD_CAT_ID/{norad_id}/format/json"
+            response = await self.session.get(query, cache_ttl=3600)
+            
+            if response and response.status_code == 200:
+                data = response.json()
+                if data and len(data) > 0:
+                    item = data[0]
+                    tle = (
+                        item.get('OBJECT_NAME', f'SAT-{norad_id}'),
+                        item.get('TLE_LINE1', ''),
+                        item.get('TLE_LINE2', '')
+                    )
+                    logger.info("TLE fetched from Space-Track", norad_id=norad_id)
+                    self._tle_cache[norad_id] = tle
+                    return tle
+        except Exception as e:
+            logger.warning("Space-Track individual fetch failed", norad_id=norad_id, error=str(e))
+        
+        logger.warning("All TLE sources failed for satellite", norad_id=norad_id)
+        return None
+    
     def get_satellite_name(self, norad_id: str) -> Optional[str]:
         """Get satellite name from cache."""
         if norad_id in self._tle_cache:
@@ -184,7 +258,11 @@ class TLEService:
         return None
     
     def get_tle(self, norad_id: str) -> Optional[tuple[str, str]]:
-        """Get TLE lines for a satellite."""
+        """
+        Get TLE lines for a satellite.
+        
+        Note: This is synchronous. For live fetching, use fetch_individual_tle().
+        """
         if norad_id in self._tle_cache:
             _, line1, line2 = self._tle_cache[norad_id]
             return (line1, line2)

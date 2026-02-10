@@ -203,7 +203,7 @@ All notable changes to the SpaceX Orbital Intelligence Platform.
 ## Contributors
 
 - **James (FDE)** - Lead developer, physics engine, ANISE integration
-- **Rico** - Project owner, requirements, validation
+- **Project Owner** - Requirements, validation, and direction
 
 ---
 

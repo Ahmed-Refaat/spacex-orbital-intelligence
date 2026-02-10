@@ -149,17 +149,47 @@ function SelectedSatelliteCard({
   satelliteId: string
   onClose: () => void 
 }) {
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ['satellite', satelliteId],
     queryFn: () => getSatellite(satelliteId),
     staleTime: 5000,
+    retry: 2,
   })
 
-  if (isLoading || !data) {
+  if (isLoading) {
     return (
       <div className="bg-spacex-dark rounded-lg p-4 animate-pulse">
         <div className="h-4 bg-spacex-border rounded w-1/2 mb-2" />
         <div className="h-3 bg-spacex-border rounded w-3/4" />
+      </div>
+    )
+  }
+
+  if (isError) {
+    return (
+      <div className="bg-spacex-dark rounded-lg p-4 border border-red-500/30">
+        <div className="flex justify-between items-start mb-2">
+          <div className="text-red-400 text-sm">Failed to load satellite</div>
+          <button onClick={onClose} className="text-gray-400 hover:text-white">
+            <X size={16} />
+          </button>
+        </div>
+        <div className="text-xs text-gray-500">
+          {error instanceof Error ? error.message : 'Unknown error'}
+        </div>
+      </div>
+    )
+  }
+
+  if (!data) {
+    return (
+      <div className="bg-spacex-dark rounded-lg p-4 border border-yellow-500/30">
+        <div className="flex justify-between items-start">
+          <div className="text-yellow-400 text-sm">No data available</div>
+          <button onClick={onClose} className="text-gray-400 hover:text-white">
+            <X size={16} />
+          </button>
+        </div>
       </div>
     )
   }
