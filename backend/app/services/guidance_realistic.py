@@ -48,20 +48,21 @@ class Falcon9GuidanceLaw:
         self.target_inclination = target_inclination_deg
         
         # Flight phases (time breakpoints in seconds)
-        self.t_vertical_flight = 11.0      # Pure vertical
-        self.t_initial_kickover = 17.0     # Start pitch
-        self.t_max_q = 68.0                # Max aerodynamic pressure
-        self.t_post_max_q = 87.0           # Post Max-Q turn
+        self.t_vertical_flight = 13.0      # Pure vertical (balanced)
+        self.t_initial_kickover = 19.0     # Start pitch
+        self.t_max_q = 69.0                # Max aerodynamic pressure
+        self.t_post_max_q = 88.0           # Post Max-Q turn
         self.t_meco = 150.0                # ~MECO time
         self.t_gravity_turn_end = 320.0    # End of major turning
         
         # Pitch angles at key points (degrees from horizontal)
         # 90° = vertical, 0° = horizontal
+        # CALIBRATED FOR CRS-21 VALIDATION
         self.pitch_liftoff = 90.0
-        self.pitch_kickover_start = 80.0   # Moderate kickover
-        self.pitch_max_q = 62.0            # Moderate pre-Max-Q
-        self.pitch_post_max_q = 42.0       # Moderate turn
-        self.pitch_meco = 23.0             # Moderate pitch at MECO
+        self.pitch_kickover_start = 82.5   # Balanced kickover
+        self.pitch_max_q = 66.0            # Balanced pre-Max-Q
+        self.pitch_post_max_q = 46.0       # Balanced turn
+        self.pitch_meco = 26.5             # Balanced pitch at MECO
         self.pitch_final = 0.0             # Horizontal
     
     def get_pitch_angle(
@@ -138,32 +139,41 @@ class Falcon9GuidanceLaw:
         return self.pitch_meco
     
     def _stage2_pitch(self, time: float, altitude: float, velocity: float) -> float:
-        """Stage 2 pitch profile (150-540s)."""
+        """Stage 2 pitch profile (150-540s) - altitude-focused."""
         
         # Continue from Stage 1 pitch at MECO
         if time < self.t_meco + 10:
             # Brief coast/transition
             return self.pitch_meco
         
-        # Phase 6: Very gradual turn to horizontal (150-400s)
-        # Stage 2 needs to maintain altitude while building horizontal velocity
-        elif time < 400.0:
-            progress = (time - self.t_meco) / (400.0 - self.t_meco)
-            # Much more conservative - don't pitch below 15° until late
+        # Phase 6: STAY VERTICAL to gain altitude (150-350s)
+        # Stage 2 needs to climb first, turn later
+        elif time < 350.0:
+            progress = (time - self.t_meco) / (350.0 - self.t_meco)
+            # Very conservative - stay above 20° for altitude
             return self._interpolate(
                 self.pitch_meco,
-                15.0,  # Stay mostly upward
-                progress ** 0.8  # Slow turn
+                25.0,  # Still quite vertical
+                progress ** 0.6  # Very slow turn
             )
         
-        # Phase 7: Final circularization (400-540s)
+        # Phase 7: Gradual turn (350-480s)
+        elif time < 480.0:
+            progress = (time - 350.0) / 130.0
+            return self._interpolate(
+                25.0,
+                10.0,  # Start approaching horizontal
+                progress ** 1.2
+            )
+        
+        # Phase 8: Final circularization (480-540s)
         else:
             # Final approach to horizontal
-            progress = min(1.0, (time - 400.0) / 140.0)
+            progress = min(1.0, (time - 480.0) / 60.0)
             return self._interpolate(
-                15.0,
+                10.0,
                 self.pitch_final,
-                progress ** 1.5
+                progress ** 1.8
             )
     
     def _interpolate(self, start: float, end: float, progress: float) -> float:

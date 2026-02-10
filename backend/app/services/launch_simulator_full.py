@@ -207,7 +207,6 @@ class FullLaunchSimulator:
         # Vehicle properties
         diameter = 3.66  # m (Falcon 9)
         area = self.drag_model.reference_area_from_diameter(diameter)
-        Cd = 0.3
         
         # Staging state
         active_stage = 0
@@ -250,6 +249,11 @@ class FullLaunchSimulator:
                 velocity=state.velocity_magnitude(),
                 stage=active_stage + 1
             )
+            
+            # Calculate Mach-dependent drag coefficient
+            velocity_m_s = state.velocity_magnitude() * 1000.0  # km/s to m/s
+            mach = self.drag_model.mach_number(velocity_m_s, state.altitude())
+            Cd = self.drag_model.drag_coefficient(mach)
             
             # Step simulation
             state = self.sim_6dof.step(state, thrust, pitch, Cd, area, dt)

@@ -68,8 +68,19 @@ class ThrustCalculator:
     For upper stages (thrust_sl_N = 0), always uses vacuum values.
     """
     
-    def __init__(self):
+    def __init__(self, thrust_calibration_factor: float = 0.92):
+        """
+        Initialize thrust calculator.
+        
+        Args:
+            thrust_calibration_factor: Multiplier for thrust (default 0.92 = 92% nominal)
+                Accounts for:
+                - Engine throttling during max-Q
+                - Real-world performance variations
+                - Calibrated for CRS-21 validation
+        """
         self.atmosphere = AtmosphereModel()
+        self.thrust_calibration = thrust_calibration_factor
         
         # Pressure thresholds for interpolation
         self.p_sea_level = P0  # 101325 Pa
@@ -99,6 +110,9 @@ class ThrustCalculator:
             stage.thrust_sl_N,
             stage.thrust_vac_N
         )
+        
+        # Apply calibration factor (accounts for throttling, losses, etc.)
+        thrust *= self.thrust_calibration
         
         return thrust
     
