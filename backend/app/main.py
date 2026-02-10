@@ -157,7 +157,7 @@ app.add_middleware(
 # Request logging middleware with version headers and metrics
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
-    """Log all requests with timing, add version headers, and record metrics."""
+    """Log all requests with timing, add version headers, security headers, and record metrics."""
     start_time = time.time()
     
     response = await call_next(request)
@@ -165,6 +165,14 @@ async def log_requests(request: Request, call_next):
     # Add API version headers
     response.headers["X-API-Version"] = API_VERSION
     response.headers["X-API-Min-Version"] = API_MIN_VERSION
+    
+    # Add security headers
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    response.headers["Content-Security-Policy"] = "default-src 'self'; frame-ancestors 'none'"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     
     duration = time.time() - start_time
     

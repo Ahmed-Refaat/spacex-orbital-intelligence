@@ -10,7 +10,7 @@ from app.services.spacex_api import spacex_client
 from app.services.cache import cache
 from app.services.mock_satellites import mock_generator
 from app.services.spice_client import spice_client, SpiceServiceUnavailable, SpiceClientError
-from app.core.security import limiter
+from app.core.security import limiter, verify_api_key
 from app.models.omm import OMMUploadForm
 import structlog
 
@@ -22,7 +22,8 @@ router = APIRouter(prefix="/satellites", tags=["Satellites"])
 @router.get("")
 async def list_satellites(
     limit: int = Query(100, ge=1, le=1000),
-    offset: int = Query(0, ge=0)
+    offset: int = Query(0, ge=0),
+    _auth: bool = Depends(verify_api_key)
 ):
     """List all tracked satellites with current positions."""
     # Ensure TLE data is loaded

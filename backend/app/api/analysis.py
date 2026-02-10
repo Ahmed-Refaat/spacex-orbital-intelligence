@@ -3,7 +3,8 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from typing import Optional
 
 from app.services.orbital_engine import orbital_engine
-from app.core.security import limiter
+from app.core.security import limiter, verify_api_key
+from fastapi import Depends
 from app.services.tle_service import tle_service
 from app.services.cache import cache
 from app.services.conjunction_service import (
@@ -21,7 +22,8 @@ router = APIRouter(prefix="/analysis", tags=["Analysis"])
 async def get_satellite_risk(
     request: Request,
     satellite_id: str,
-    hours_ahead: int = Query(24, ge=1, le=72)
+    hours_ahead: int = Query(24, ge=1, le=72),
+    _auth: bool = Depends(verify_api_key)
 ):
     """Calculate collision risk for a specific satellite against nearby objects."""
     await tle_service.ensure_data_loaded()
