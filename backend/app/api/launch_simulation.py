@@ -72,6 +72,7 @@ class SimulationResult(BaseModel):
     success_count: int
     failure_modes: dict
     trajectories_sample: list
+    trajectories: list  # All final states for 2D scatter plot
     runtime_seconds: float
     parameters_summary: dict
 
