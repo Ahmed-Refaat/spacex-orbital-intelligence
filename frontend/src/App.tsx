@@ -1,9 +1,12 @@
+import { lazy, Suspense } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { Globe } from '@/components/Globe'
-import { Sidebar } from '@/components/Sidebar'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { useStore } from '@/stores/useStore'
+
+// Lazy load heavy components for code splitting
+const Globe = lazy(() => import('@/components/Globe').then(m => ({ default: m.Globe })))
+const Sidebar = lazy(() => import('@/components/Sidebar').then(m => ({ default: m.Sidebar })))
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -48,12 +51,24 @@ function AppContent() {
       {/* 3D Globe */}
       <main className="absolute inset-0">
         <ErrorBoundary>
-          <Globe />
+          <Suspense fallback={
+            <div className="flex items-center justify-center h-full">
+              <div className="text-white text-sm">Loading 3D Globe...</div>
+            </div>
+          }>
+            <Globe />
+          </Suspense>
         </ErrorBoundary>
       </main>
 
       {/* Sidebar */}
-      <Sidebar />
+      <Suspense fallback={
+        <div className="absolute top-0 right-0 w-80 h-full bg-spacex-dark/95 backdrop-blur-sm border-l border-spacex-border flex items-center justify-center">
+          <div className="text-white text-sm">Loading controls...</div>
+        </div>
+      }>
+        <Sidebar />
+      </Suspense>
     </div>
   )
 }

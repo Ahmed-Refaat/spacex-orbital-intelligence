@@ -90,18 +90,65 @@ async def lifespan(app: FastAPI):
     
     # TLE loading in background (don't block startup)
     async def load_tle_background():
-        try:
-            # 180s timeout for Celestrak (large datasets can be slow)
-            await asyncio.wait_for(tle_service.update_orbital_engine(), timeout=180)
-            logger.info("TLE data loaded", count=tle_service.satellite_count)
-            # Update Prometheus metric
-            SATELLITES_LOADED.set(tle_service.satellite_count)
-            if tle_service.last_update:
-                TLE_LAST_UPDATE.set(tle_service.last_update.timestamp())
-        except asyncio.TimeoutError:
-            logger.error("TLE load timeout (180s) - using mock data")
-        except Exception as e:
-            logger.error("TLE load failed, using mock data", error=str(e), error_type=type(e).__name__)
+        """
+        Load TLE data with resilient retry logic.
+        
+        Standards: Senior-level robustness
+        - Timeout: 30s max (not 180s)
+        - Retries: 3 attempts with exponential backoff
+        - Circuit breaker: Already implemented in tle_service
+        """
+        max_retries = 3
+        base_timeout = 30  # 30s max per attempt (not 180s)
+        
+        for attempt in range(max_retries):
+            try:
+                await asyncio.wait_for(
+                    tle_service.update_orbital_engine(), 
+                    timeout=base_timeout
+                )
+                logger.info("TLE data loaded", count=tle_service.satellite_count, attempt=attempt+1)
+                # Update Prometheus metric
+                SATELLITES_LOADED.set(tle_service.satellite_count)
+                if tle_service.last_update:
+                    TLE_LAST_UPDATE.set(tle_service.last_update.timestamp())
+                return  # Success, exit retry loop
+                
+            except asyncio.TimeoutError:
+                if attempt < max_retries - 1:
+                    backoff = 2 ** attempt  # Exponential backoff: 1s, 2s, 4s
+                    logger.warning(
+                        "TLE load timeout, retrying",
+                        attempt=attempt+1,
+                        max_retries=max_retries,
+                        backoff_seconds=backoff
+                    )
+                    await asyncio.sleep(backoff)
+                else:
+                    logger.error(
+                        "TLE load timeout after all retries - using mock data",
+                        max_retries=max_retries,
+                        timeout_seconds=base_timeout
+                    )
+                    
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    backoff = 2 ** attempt
+                    logger.warning(
+                        "TLE load failed, retrying",
+                        error=str(e),
+                        error_type=type(e).__name__,
+                        attempt=attempt+1,
+                        backoff_seconds=backoff
+                    )
+                    await asyncio.sleep(backoff)
+                else:
+                    logger.error(
+                        "TLE load failed after all retries - using mock data",
+                        error=str(e),
+                        error_type=type(e).__name__,
+                        max_retries=max_retries
+                    )
     
     # Start TLE loading in background
     asyncio.create_task(load_tle_background())

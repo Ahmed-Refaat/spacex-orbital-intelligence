@@ -14,7 +14,18 @@ export default defineConfig({
     include: ['react', 'react-dom', 'scheduler'],
   },
   build: {
-    chunkSizeWarningLimit: 1000, // Warn if chunk > 1MB
+    chunkSizeWarningLimit: 500, // Warn if chunk > 500KB (stricter)
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // Split vendor code into separate chunks
+          'vendor-react': ['react', 'react-dom', 'scheduler'],
+          'vendor-three': ['three', '@react-three/fiber', '@react-three/drei'],
+          'vendor-query': ['@tanstack/react-query'],
+          'vendor-ui': ['lucide-react', 'zustand'],
+        },
+      },
+    },
   },
   server: {
     port: 3000,
