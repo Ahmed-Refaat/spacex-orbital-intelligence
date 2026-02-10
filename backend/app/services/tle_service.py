@@ -78,8 +78,26 @@ class TLEService:
         except Exception as e:
             logger.warning("Space-Track error (may be banned)", error=str(e))
         
-        # Fallback to local TLE files FIRST (faster than Celestrak)
-        logger.info("Using local TLE files as primary fallback", source=source)
+        # Fallback to Celestrak (bulk public data)
+        logger.info("Using Celestrak as TLE source (Space-Track unavailable)", source=source)
+        
+        try:
+            if source == "starlink":
+                result = await celestrak.fetch_starlink_tle()
+            elif source == "stations":
+                result = await celestrak.fetch_stations()
+            else:
+                result = await celestrak.fetch_active_satellites(limit=1000)
+            
+            if result:
+                logger.info("Celestrak fetch successful", count=len(result), source="celestrak")
+                return result
+            
+        except Exception as e:
+            logger.error("Celestrak fetch failed", error=str(e), source=source)
+        
+        # Fallback to local TLE files (offline mode)
+        logger.info("Using local TLE files as final fallback", source=source)
         
         try:
             if source == "starlink":
@@ -97,25 +115,7 @@ class TLEService:
         except Exception as e:
             logger.error("Local TLE file load failed", error=str(e), source=source)
         
-        # Fallback to Celestrak (bulk public data) as last resort
-        logger.info("Using Celestrak as TLE source (local file unavailable)", source=source)
-        
-        try:
-            if source == "starlink":
-                result = await celestrak.fetch_starlink_tle()
-            elif source == "stations":
-                result = await celestrak.fetch_stations()
-            else:
-                result = await celestrak.fetch_active_satellites(limit=1000)
-            
-            if result:
-                logger.info("Celestrak fetch successful", count=len(result), source="celestrak")
-                return result
-            
-        except Exception as e:
-            logger.error("Celestrak fetch failed", error=str(e), source=source)
-        
-        # All sources failed - will use mock satellites
+        # Ultimate fallback: empty (will use mock satellites)
         logger.warning("All TLE sources failed - using mock satellites", source=source)
         return {}
     
