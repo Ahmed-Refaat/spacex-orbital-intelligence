@@ -106,20 +106,22 @@ def sanitize_dict(data: Dict[str, Any]) -> Dict[str, Any]:
     return sanitized
 
 
-def sanitize_log_record(record: Dict[str, Any]) -> Dict[str, Any]:
+def sanitize_log_record(logger, method_name: str, event_dict: Dict[str, Any]) -> Dict[str, Any]:
     """
     Sanitize a structlog record before emission.
     
     This is the processor that should be added to structlog pipeline.
     
     Args:
-        record: Log record from structlog
+        logger: Logger instance (unused, required by structlog)
+        method_name: Log method name (unused, required by structlog)
+        event_dict: Log record from structlog
         
     Returns:
         Sanitized log record
     """
-    # Sanitize all values in the record
-    return sanitize_dict(record)
+    # Sanitize all values in the event dict
+    return sanitize_dict(event_dict)
 
 
 # Example usage in structlog configuration

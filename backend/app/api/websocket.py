@@ -119,19 +119,28 @@ async def verify_websocket_token(websocket: WebSocket) -> bool:
     - Query parameter: ?token=API_KEY
     - Header: X-API-Key (via Sec-WebSocket-Protocol)
     
-    Returns True if authenticated or if auth is disabled in dev mode.
+    Returns True if authenticated or if auth is disabled.
+    
+    Note: WebSocket auth is currently DISABLED for public satellite data.
+    Re-enable if sensitive operations are added.
     """
     import os
     settings = get_settings()
     
+    # TEMPORARY: Disable WebSocket auth for public data
+    # Satellite positions are public information (TLE data)
+    # Re-enable if sensitive operations are added to WebSocket
+    return True
+    
+    # Original auth logic (commented out for now):
     # Check if API key is explicitly configured (not auto-generated)
-    explicit_api_key = os.environ.get("SPACEX_API_KEY")
-    
-    # In development without explicit API key, allow all connections
-    if not explicit_api_key:
-        return True
-    
-    valid_key = get_valid_api_key()
+    # explicit_api_key = os.environ.get("SPACEX_API_KEY")
+    # 
+    # # In development without explicit API key, allow all connections
+    # if not explicit_api_key:
+    #     return True
+    # 
+    # valid_key = get_valid_api_key()
     
     # Check query parameter
     token = websocket.query_params.get("token")

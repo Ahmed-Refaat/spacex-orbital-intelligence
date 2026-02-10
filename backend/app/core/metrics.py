@@ -91,6 +91,12 @@ CACHE_MISSES = Counter(
     ['cache_type']
 )
 
+CACHE_HIT_RATE = Counter(
+    'cache_requests_total',
+    'Cache requests by operation and result',
+    ['operation', 'result']  # result: hit/miss/timeout/error/disconnected
+)
+
 CACHE_SIZE = Gauge(
     'cache_size_bytes',
     'Current cache size in bytes',
