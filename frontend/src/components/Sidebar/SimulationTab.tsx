@@ -3,6 +3,7 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { useStore } from '@/stores/useStore'
 import { simulateDeorbit } from '@/services/api'
 import { PlayCircle, RotateCcw, AlertTriangle, Sun, Radio, Info } from 'lucide-react'
+import { ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from 'recharts'
 
 // Types for simulation results
 interface DeorbitResult {
@@ -437,6 +438,7 @@ function LaunchSimulator() {
       {/* Results */}
       {result && result.status === 'complete' && (
         <div className="mt-4 space-y-3">
+          {/* Success Rate Card */}
           <div className="bg-spacex-card rounded p-3">
             <div className="text-xs text-gray-400 mb-1">Success Rate</div>
             <div className={`text-2xl font-bold ${
@@ -451,22 +453,112 @@ function LaunchSimulator() {
             </div>
           </div>
 
-          {/* Failure Modes */}
+          {/* 2D Scatter: Altitude vs Velocity */}
+          {result.trajectories && result.trajectories.length > 0 && (
+            <div className="bg-spacex-card rounded p-3">
+              <div className="text-xs text-gray-400 mb-2">Final State Distribution</div>
+              <ResponsiveContainer width="100%" height={180}>
+                <ScatterChart margin={{ top: 5, right: 5, bottom: 20, left: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                  <XAxis 
+                    dataKey="altitude" 
+                    type="number" 
+                    name="Altitude"
+                    unit=" km"
+                    tick={{ fill: '#9CA3AF', fontSize: 10 }}
+                    label={{ value: 'Altitude (km)', position: 'bottom', fill: '#9CA3AF', fontSize: 10 }}
+                    domain={[0, 'auto']}
+                  />
+                  <YAxis 
+                    dataKey="velocity" 
+                    type="number" 
+                    name="Velocity"
+                    unit=" km/s"
+                    tick={{ fill: '#9CA3AF', fontSize: 10 }}
+                    label={{ value: 'Velocity (km/s)', angle: -90, position: 'left', fill: '#9CA3AF', fontSize: 10 }}
+                    domain={[0, 'auto']}
+                  />
+                  <Tooltip 
+                    content={({ payload }) => {
+                      if (!payload || !payload[0]) return null
+                      const data = payload[0].payload
+                      return (
+                        <div className="bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs">
+                          <div className={data.success ? 'text-green-400' : 'text-red-400'}>
+                            {data.success ? '✓ Success' : '✗ Failed'}
+                          </div>
+                          <div className="text-gray-300">Alt: {data.altitude.toFixed(1)} km</div>
+                          <div className="text-gray-300">Vel: {data.velocity.toFixed(2)} km/s</div>
+                        </div>
+                      )
+                    }}
+                  />
+                  <Scatter 
+                    data={result.trajectories} 
+                    fill="#8884d8"
+                  >
+                    {result.trajectories.map((entry: any, index: number) => (
+                      <Cell key={`cell-${index}`} fill={entry.success ? '#10b981' : '#ef4444'} opacity={0.6} />
+                    ))}
+                  </Scatter>
+                </ScatterChart>
+              </ResponsiveContainer>
+              <div className="flex items-center justify-center gap-4 mt-2 text-xs">
+                <div className="flex items-center gap-1">
+                  <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                  <span className="text-gray-400">Success</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-2 h-2 rounded-full bg-red-500"></div>
+                  <span className="text-gray-400">Failure</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Failure Modes Bar Chart */}
           {result.failure_modes && Object.keys(result.failure_modes).length > 0 && (
             <div className="bg-spacex-card rounded p-3">
               <div className="text-xs text-gray-400 mb-2">Failure Modes</div>
-              {Object.entries(result.failure_modes).map(([mode, count]: [string, any]) => (
-                <div key={mode} className="flex justify-between text-xs mb-1">
-                  <span className="text-gray-500">
-                    {mode === 'fuel_depletion' ? '⛽ Fuel depleted' :
-                     mode === 'insufficient_velocity' ? '🚀 Insufficient velocity' :
-                     mode === 'structural_failure' ? '💥 Structural failure' :
-                     mode === 'crashed' ? '💀 Crashed' :
-                     mode.replace(/_/g, ' ')}
-                  </span>
-                  <span className="text-white">{count}</span>
-                </div>
-              ))}
+              <ResponsiveContainer width="100%" height={140}>
+                <BarChart 
+                  data={Object.entries(result.failure_modes).map(([mode, count]) => ({
+                    mode: mode === 'fuel_depletion' ? 'Fuel' :
+                          mode === 'insufficient_velocity' ? 'Velocity' :
+                          mode === 'structural_failure' ? 'Structural' :
+                          mode === 'crashed' ? 'Crashed' :
+                          mode.replace(/_/g, ' '),
+                    count: count,
+                    fullMode: mode
+                  }))}
+                  margin={{ top: 5, right: 5, bottom: 20, left: 5 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                  <XAxis 
+                    dataKey="mode" 
+                    tick={{ fill: '#9CA3AF', fontSize: 10 }}
+                    angle={-20}
+                    textAnchor="end"
+                    height={40}
+                  />
+                  <YAxis 
+                    tick={{ fill: '#9CA3AF', fontSize: 10 }}
+                  />
+                  <Tooltip 
+                    content={({ payload }) => {
+                      if (!payload || !payload[0]) return null
+                      const data = payload[0].payload
+                      return (
+                        <div className="bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs">
+                          <div className="text-white font-medium">{data.mode}</div>
+                          <div className="text-gray-300">{data.count} failures</div>
+                        </div>
+                      )
+                    }}
+                  />
+                  <Bar dataKey="count" fill="#ef4444" />
+                </BarChart>
+              </ResponsiveContainer>
             </div>
           )}
 

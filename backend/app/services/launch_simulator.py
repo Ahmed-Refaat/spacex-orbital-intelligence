@@ -115,6 +115,7 @@ class MonteCarloResult:
     success_count: int
     failure_modes: Dict[str, int]
     trajectories_sample: List[TrajectoryResult]  # 10 sample trajectories
+    trajectories: List[Dict[str, any]]  # All final states for 2D viz
     runtime_seconds: float
     parameters_summary: Dict[str, Dict[str, float]]  # mean, std per parameter
     
@@ -126,6 +127,7 @@ class MonteCarloResult:
             "failure_modes": self.failure_modes,
             "runtime_seconds": round(self.runtime_seconds, 2),
             "trajectories_sample": [t.to_dict() for t in self.trajectories_sample],
+            "trajectories": self.trajectories,  # Final states for scatter plot
             "parameters_summary": self.parameters_summary
         }
 
@@ -544,6 +546,17 @@ class MonteCarloEngine:
         sample_indices = np.random.choice(n_runs, min(10, n_runs), replace=False)
         trajectories_sample = [results[i] for i in sample_indices]
         
+        # Extract final states for 2D visualization (all runs)
+        trajectories_final = [
+            {
+                "altitude": round(r.final_altitude_km, 2),
+                "velocity": round(r.final_velocity_km_s, 3),
+                "success": r.success,
+                "reason": r.reason
+            }
+            for r in results
+        ]
+        
         # Parameters summary
         parameters_summary = {}
         for key in samples:
@@ -569,6 +582,7 @@ class MonteCarloEngine:
             success_count=success_count,
             failure_modes=failure_modes,
             trajectories_sample=trajectories_sample,
+            trajectories=trajectories_final,  # Add final states
             runtime_seconds=runtime,
             parameters_summary=parameters_summary
         )
