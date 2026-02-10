@@ -8,7 +8,7 @@ import pytest
 import json
 from pathlib import Path
 from app.models.vehicle import Vehicle, Stage
-from app.services.launch_simulator_integrated import IntegratedLaunchSimulator
+from app.services.launch_simulator_full import FullLaunchSimulator
 from app.services.earth_rotation import LaunchSite
 
 
@@ -63,12 +63,12 @@ class TestIntegratedSimulator:
     
     def test_simulator_exists(self):
         """Integrated simulator should exist."""
-        sim = IntegratedLaunchSimulator()
+        sim = FullLaunchSimulator()
         assert sim is not None
     
     def test_load_vehicle_from_config(self):
         """Should load Falcon 9 from config."""
-        sim = IntegratedLaunchSimulator()
+        sim = FullLaunchSimulator()
         vehicle = sim.load_vehicle("falcon9_block5")
         
         assert vehicle.name == "Falcon 9 Block 5"
@@ -76,7 +76,7 @@ class TestIntegratedSimulator:
     
     def test_simulate_returns_results(self):
         """Simulation should return results."""
-        sim = IntegratedLaunchSimulator()
+        sim = FullLaunchSimulator()
         vehicle = sim.load_vehicle("falcon9_block5")
         site = LaunchSite.cape_canaveral()
         
@@ -122,7 +122,7 @@ class TestCRS21Validation:
         - Target orbit: 210 km x 51.6° (ISS rendezvous orbit)
         - Date: 2020-12-06
         """
-        sim = IntegratedLaunchSimulator()
+        sim = FullLaunchSimulator()
         
         # Load Falcon 9
         vehicle = sim.load_vehicle("falcon9_block5")
@@ -145,7 +145,7 @@ class TestCRS21Validation:
     
     def test_crs21_meco_altitude(self):
         """MECO altitude should match CRS-21 within 5%."""
-        sim = IntegratedLaunchSimulator()
+        sim = FullLaunchSimulator()
         vehicle = sim.load_vehicle("falcon9_block5")
         site = LaunchSite.cape_canaveral()
         
@@ -171,7 +171,7 @@ class TestCRS21Validation:
     
     def test_crs21_meco_velocity(self):
         """MECO velocity should match CRS-21 within 5%."""
-        sim = IntegratedLaunchSimulator()
+        sim = FullLaunchSimulator()
         vehicle = sim.load_vehicle("falcon9_block5")
         site = LaunchSite.cape_canaveral()
         
@@ -196,7 +196,7 @@ class TestCRS21Validation:
     
     def test_crs21_seco_altitude(self):
         """SECO altitude should match CRS-21 within 5%."""
-        sim = IntegratedLaunchSimulator()
+        sim = FullLaunchSimulator()
         vehicle = sim.load_vehicle("falcon9_block5")
         site = LaunchSite.cape_canaveral()
         
@@ -221,7 +221,7 @@ class TestCRS21Validation:
     
     def test_crs21_final_orbit(self):
         """Final orbit should be approximately 209-212 km."""
-        sim = IntegratedLaunchSimulator()
+        sim = FullLaunchSimulator()
         vehicle = sim.load_vehicle("falcon9_block5")
         site = LaunchSite.cape_canaveral()
         
@@ -242,7 +242,7 @@ class TestCRS21Validation:
     
     def test_crs21_report_all_errors(self):
         """Generate full validation report with all errors."""
-        sim = IntegratedLaunchSimulator()
+        sim = FullLaunchSimulator()
         vehicle = sim.load_vehicle("falcon9_block5")
         site = LaunchSite.cape_canaveral()
         
@@ -275,7 +275,7 @@ class TestValidationThresholds:
     
     def test_validation_at_threshold(self, error_threshold):
         """Test if validation passes at given error threshold."""
-        sim = IntegratedLaunchSimulator()
+        sim = FullLaunchSimulator()
         vehicle = sim.load_vehicle("falcon9_block5")
         site = LaunchSite.cape_canaveral()
         

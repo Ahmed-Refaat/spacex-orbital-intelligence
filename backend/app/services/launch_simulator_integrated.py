@@ -4,8 +4,7 @@ Integrated launch simulator for validation.
 Story 3.5: Validation vs CRS-21
 Integrates all physics components for end-to-end simulation.
 
-NOTE: This is a SIMPLIFIED implementation for Phase 0 validation.
-Full 6-DOF simulation will be implemented in Phase 1-3.
+NOW WITH FULL 6-DOF SIMULATION + DRAG + GRAVITY TURN!
 """
 import json
 from pathlib import Path

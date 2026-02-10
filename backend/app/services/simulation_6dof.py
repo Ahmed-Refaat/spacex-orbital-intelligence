@@ -326,19 +326,20 @@ class GravityTurnGuidance:
         # Real guidance: align thrust with velocity vector + small correction
         
         # Target: horizontal (0°) at orbital velocity (~7.8 km/s)
-        # Linear interpolation (simplified)
+        # Faster pitch-over for realistic trajectory
         v_orbital = 7.8  # km/s
         pitch_min = 0.0
         pitch_max = 90.0 - self.kickover_angle
         
-        # Pitch as function of velocity
+        # Pitch as function of velocity (non-linear for faster turn)
         if velocity < 0.1:
             pitch = pitch_max
         elif velocity >= v_orbital:
             pitch = pitch_min
         else:
-            # Linear interpolation
-            pitch = pitch_max - (pitch_max - pitch_min) * (velocity / v_orbital)
+            # Quadratic interpolation (pitches faster early on)
+            ratio = velocity / v_orbital
+            pitch = pitch_max * (1 - ratio) ** 1.5  # Power 1.5 for faster turn
         
         return max(0.0, pitch)
 
