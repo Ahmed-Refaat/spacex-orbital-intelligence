@@ -7,24 +7,6 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-green)](https://fastapi.tiangolo.com/)
 [![ANISE](https://img.shields.io/badge/ANISE-0.4-orange)](https://github.com/nyx-space/anise)
 
-## 🔒 Security Notice
-
-**This is a PUBLIC repository.** Before contributing or deploying:
-
-1. **NEVER commit secrets** (passwords, API keys, credentials)
-2. **Read:** [`SECURITY_PUBLIC_REPO.md`](SECURITY_PUBLIC_REPO.md) - Security guidelines
-3. **Setup:** [`SETUP.md`](SETUP.md) - Secure installation guide
-4. **Audit:** [`SECURITY_AUDIT_REPORT.md`](SECURITY_AUDIT_REPORT.md) - Security posture
-
-**Quick setup:**
-```bash
-cp backend/.env.example backend/.env
-# Edit backend/.env with your credentials
-chmod 600 backend/.env
-```
-
-⚠️ **Automated security scanning is active.** Commits with secrets will be blocked.
-
 ## 🎯 Features
 
 ### 🚀 Launch Trajectory Simulation
@@ -99,13 +81,10 @@ cd spacex-orbital-intelligence
 ### 2. Configure Environment
 ```bash
 # Copy environment template
-cp .env.example backend/.env
+cp backend/.env.example backend/.env
 
-# Generate secure passwords
-python3 -c "import secrets; print('REDIS_PASSWORD=' + secrets.token_urlsafe(32))"
-python3 -c "import secrets; print('POSTGRES_PASSWORD=' + secrets.token_urlsafe(32))"
-
-# Edit backend/.env with your passwords
+# Edit backend/.env with your configuration
+nano backend/.env
 ```
 
 ### 3. Start Services
@@ -267,7 +246,7 @@ backend/
 │   │   ├── anise_planetary.py
 │   │   └── ...
 │   ├── models/           # Data models
-│   └── core/             # Config, metrics, security
+│   └── core/             # Config, metrics
 ├── data/
 │   └── vehicles/         # Vehicle configurations
 ├── tests/                # Test suite
@@ -298,7 +277,8 @@ MIT License - See [LICENSE](LICENSE) for details
 - **ANISE** by NYX Space - High-performance astrodynamics toolkit
 - **SpaceX** - Publicly available mission data
 - **NASA JPL** - DE440s ephemeris and planetary data
-- **TLE Data Sources** - Open-source satellite tracking data
+- **Space-Track.org** - Satellite catalog and TLE data
+- **Celestrak** - Public TLE distribution
 
 ## 📧 Contact
 

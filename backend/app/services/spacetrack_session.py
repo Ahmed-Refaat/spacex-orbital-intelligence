@@ -17,6 +17,7 @@ import hashlib
 import structlog
 
 from app.core.config import get_settings
+from app.services.rate_limiter import spacetrack_limiter
 
 logger = structlog.get_logger()
 
@@ -191,6 +192,14 @@ class SpaceTrackSessionManager:
             return None
         
         client = await self._get_client()
+        
+        # Enforce rate limits BEFORE making request
+        if not await spacetrack_limiter.acquire(timeout=60.0):
+            logger.error(
+                "Space-Track rate limit exceeded, request blocked",
+                path_preview=path[:80]
+            )
+            return None
         
         try:
             logger.info(
