@@ -39,9 +39,6 @@ export function Globe() {
           {/* Earth */}
           <Earth />
           
-          {/* Atmosphere effects */}
-          <AtmosphereGlow enabled={true} />
-          
           {/* Satellites */}
           <Satellites positions={satellites} />
           
