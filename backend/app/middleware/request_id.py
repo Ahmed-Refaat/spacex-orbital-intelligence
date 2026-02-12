@@ -59,11 +59,13 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
         request.state.request_id = request_id
         
         # Bind to structlog context for automatic inclusion in logs
-        with structlog.contextvars.bind_contextvars(
+        structlog.contextvars.bind_contextvars(
             request_id=request_id,
             path=request.url.path,
             method=request.method
-        ):
+        )
+        
+        try:
             # Log request start
             logger.info(
                 "Request started",
@@ -95,6 +97,9 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
             response.headers[self.CORRELATION_ID_HEADER] = request_id
             
             return response
+        finally:
+            # Clean up contextvars
+            structlog.contextvars.clear_contextvars()
 
 
 def get_request_id(request: Request) -> str:
