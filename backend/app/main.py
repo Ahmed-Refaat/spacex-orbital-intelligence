@@ -130,6 +130,18 @@ async def lifespan(app: FastAPI):
                         max_retries=max_retries,
                         timeout_seconds=base_timeout
                     )
+                    # Fallback: Load mock satellites
+                    try:
+                        from app.services.mock_satellites import mock_generator
+                        satellites = mock_generator.get_positions()
+                        for sat in satellites[:2000]:  # Limit to 2000
+                            tle = mock_generator.get_tle(sat["id"])
+                            if tle:
+                                orbital_engine.load_tle(sat["id"], tle["line1"], tle["line2"])
+                        SATELLITES_LOADED.set(orbital_engine.satellite_count)
+                        logger.info("Mock satellites loaded", count=orbital_engine.satellite_count)
+                    except Exception as mock_err:
+                        logger.error("Mock data load failed", error=str(mock_err))
                     
             except Exception as e:
                 if attempt < max_retries - 1:
@@ -149,6 +161,18 @@ async def lifespan(app: FastAPI):
                         error_type=type(e).__name__,
                         max_retries=max_retries
                     )
+                    # Fallback: Load mock satellites
+                    try:
+                        from app.services.mock_satellites import mock_generator
+                        satellites = mock_generator.get_positions()
+                        for sat in satellites[:2000]:
+                            tle = mock_generator.get_tle(sat["id"])
+                            if tle:
+                                orbital_engine.load_tle(sat["id"], tle["line1"], tle["line2"])
+                        SATELLITES_LOADED.set(orbital_engine.satellite_count)
+                        logger.info("Mock satellites loaded", count=orbital_engine.satellite_count)
+                    except Exception as mock_err:
+                        logger.error("Mock data load failed", error=str(mock_err))
     
     # Start TLE loading in background
     asyncio.create_task(load_tle_background())
