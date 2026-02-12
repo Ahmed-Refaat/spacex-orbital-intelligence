@@ -15,19 +15,22 @@
 - **Multi-Stage Support** - Stage separation, coast phases, engine ignition
 - **Atmospheric Modeling** - Altitude-dependent drag with Mach-number effects
 - **Gravity Turn Guidance** - Time-phased pitch profile based on real telemetry
+- **Monte Carlo Simulation Engine** - Statistical analysis with parameter sampling
 - **Performance Validation** - <15% error vs real flight data
 
 ### 🌍 Orbital Analysis (ANISE-Powered)
 - **Planetary Ephemeris** - Sun, Moon, planets (JPL DE440s, 1900-2050)
 - **Ground Station Visibility** - AER calculations for 10 NASA/ESA stations
 - **Eclipse Detection** - High-precision solar eclipsing (0.075ms/check)
-- **Satellite Tracking** - 30,000+ objects via TLE/SGP4 propagation
+- **Satellite Tracking** - 11,000+ objects via TLE/SGP4 propagation
 
 ### 🛰️ Orbital Intelligence
-- Collision proximity detection
-- Orbital density analysis
-- Risk scoring per satellite
-- Real-time position updates
+- **Real-time Tracking** - 11,000+ satellites with live position updates
+- **Collision Detection** - Proximity alerts and risk scoring
+- **Orbital Density Analysis** - Hotspot identification and congestion mapping
+- **OMM Support** - CCSDS Orbit Mean-Elements Message format (NASA standard)
+- **TLE/OMM Dual Mode** - Switch between data sources dynamically
+- **Conjunction Data Messages (CDM)** - Real Space-Track.org collision screening data
 
 ### 🎬 3D Visualization
 - Real-time 3D globe with satellite tracking
@@ -40,6 +43,7 @@
 - Trajectory CSV export
 - Launch history and fleet tracking
 - Validation against real missions
+- Launch Library 2 integration (live launch data)
 
 ## 🏆 Technical Highlights
 
@@ -50,12 +54,21 @@
 - Mach-dependent drag coefficient (Cd 0.40 → 0.60 → 0.28)
 - Thrust/Isp interpolation (sea level to vacuum)
 - Earth rotation velocity bonus
+- Monte Carlo simulation support (internal service)
 
 **ANISE Integration:**
 - Sub-millisecond queries (0.075-0.099ms)
 - No external dependencies (self-contained)
 - Thread-safe Rust core
 - NASA-grade precision
+
+**Data Sources:**
+- **Space-Track.org** - Primary TLE source (11,000+ satellites)
+- **Celestrak** - TLE fallback source
+- **N2YO** - TLE validation
+- **OMM Upload** - CCSDS format support
+- **SpaceX API** - Launch history
+- **Launch Library 2** - Live launch data
 
 **Validation Results (CRS-21):**
 ```
@@ -85,18 +98,23 @@ cp backend/.env.example backend/.env
 
 # Edit backend/.env with your configuration
 nano backend/.env
+
+# Required for full functionality:
+# - SPACETRACK_USERNAME (register at space-track.org)
+# - SPACETRACK_PASSWORD
+# - N2YO_API_KEY (optional, for TLE validation)
 ```
 
 ### 3. Start Services
 ```bash
 # With Docker Compose
-docker-compose up -d
+docker compose up -d
 
 # Check health
-docker-compose ps
+docker compose ps
 
 # View logs
-docker-compose logs -f backend
+docker compose logs -f backend
 ```
 
 ### 4. Access Platform
@@ -104,21 +122,56 @@ docker-compose logs -f backend
 - **API Docs:** http://localhost:8000/docs
 - **Metrics:** http://localhost:8000/metrics
 
-## 📖 Documentation
+## 📖 API Documentation
 
-### Core Documentation
-- **[Architecture](docs/bmad/02-architecture.md)** - System design and components
-- **[Phase 0 Tracker](docs/bmad/PHASE-0-TRACKER.md)** - Development roadmap
-- **[ANISE Integration](docs/bmad/01-prd-anise-integration.md)** - PRD and evaluation
+### Core Endpoints
 
-### Physics & Simulation
-- **Vehicle Configuration:** `backend/data/vehicles/falcon9_block5.json`
-- **Guidance Law:** `backend/app/services/guidance_realistic.py`
-- **6-DOF Simulation:** `backend/app/services/simulation_6dof.py`
-- **Drag Model:** `backend/app/services/drag_model.py`
-- **Thrust Profile:** `backend/app/services/thrust_profile.py`
+#### 🛰️ Satellite Tracking
+```bash
+# Get all satellite positions (11,000+ satellites)
+GET /api/v1/satellites/positions
 
-### API Reference
+# Get satellite details
+GET /api/v1/satellites/{satellite_id}
+
+# Get orbital path (trajectory prediction)
+GET /api/v1/satellites/{satellite_id}/orbit?hours=24
+
+# Switch data source (TLE ↔ OMM)
+GET /api/v1/data-source
+POST /api/v1/data-source
+```
+
+#### 📤 OMM Upload (NASA Standard)
+```bash
+# Upload OMM file (XML or JSON)
+POST /api/v1/satellites/omm
+Content-Type: multipart/form-data
+
+# Supported formats:
+# - CCSDS OMM 2.0 XML
+# - OMM JSON
+# - Includes covariance matrix support
+
+curl -X POST http://localhost:8000/api/v1/satellites/omm \
+  -F "file=@iss_omm.xml" \
+  -F "format=xml" \
+  -F "source=nasa_cdm"
+```
+
+#### ⚠️ Conjunction Data (Space-Track CDM)
+```bash
+# Get real collision screening data
+GET /api/v1/cdm/starlink?hours_ahead=72
+
+# Check CDM status
+GET /api/v1/cdm/status
+
+# Note: Requires Space-Track credentials
+# Data from 18th Space Defense Squadron
+```
+
+#### 🚀 Launch Simulation
 ```bash
 # Launch simulation
 POST /api/v1/launch-simulation/simulate
@@ -129,6 +182,12 @@ POST /api/v1/launch-simulation/simulate
   "target_inclination_deg": 51.6
 }
 
+# Get simulation result
+GET /api/v1/launch-simulation/{sim_id}
+```
+
+#### 🌍 Ephemeris & Analysis
+```bash
 # Eclipse detection
 GET /api/v1/ephemeris/eclipse/25544?epoch=2024-01-01T12:00:00Z
 
@@ -137,6 +196,24 @@ GET /api/v1/ground-stations/DSS-65/visibility/25544
 
 # Planetary ephemeris
 GET /api/v1/ephemeris/sun?epoch=2024-01-01T00:00:00Z
+
+# Collision risk analysis
+GET /api/v1/analysis/risk/{satellite_id}?hours_ahead=24
+
+# Orbital density
+GET /api/v1/analysis/density?altitude_km=550&tolerance_km=50
+```
+
+#### 📊 Live Launch Data
+```bash
+# Live upcoming launches (Launch Library 2)
+GET /api/v1/launches-live?upcoming=true&spacex_only=false
+
+# Next launch countdown
+GET /api/v1/launches-live/next
+
+# Launch statistics
+GET /api/v1/launches-live/statistics
 ```
 
 ## 🛠️ Tech Stack
@@ -148,12 +225,14 @@ GET /api/v1/ephemeris/sun?epoch=2024-01-01T00:00:00Z
 - **NumPy** - Numerical computing
 - **Redis** - Caching and rate limiting
 - **PostgreSQL** - Mission data persistence
+- **CircuitBreaker** - Resilience patterns
 
 ### Frontend
 - **React 18** + TypeScript
 - **Three.js** / @react-three/fiber - 3D visualization
 - **Recharts** - Trajectory plotting
 - **Zustand** - State management
+- **TanStack Query** - Data fetching
 - **Tailwind CSS** - Styling
 
 ### Infrastructure
@@ -182,6 +261,8 @@ python -m pytest --cov=app --cov-report=html
 - `test_eclipse_detection.py` - Eclipse calculations
 - `test_ground_station_aer.py` - AER calculations
 - `test_falcon9_config.py` - Vehicle configuration
+- `test_satellite_id_validation.py` - Injection prevention
+- `test_circuit_breakers_all_services.py` - Resilience testing
 
 ## 📊 Performance
 
@@ -193,10 +274,16 @@ python -m pytest --cov=app --cov-report=html
 ### Simulation
 - Launch trajectory (540s): **~2-3 seconds** (0.1s timestep)
 - Full validation suite: **~5 seconds**
+- Satellite propagation: **~1000s of satellites/sec**
+
+### Data Sources
+- TLE refresh: **30s timeout**, 3 retries with exponential backoff
+- Circuit breakers on all external APIs
+- Fallback sources: Space-Track → Celestrak → N2YO
 
 ## 🗺️ Roadmap
 
-### Phase 0: Foundation (90% Complete)
+### ✅ Phase 0: Foundation (Complete)
 - ✅ Multi-stage vehicle model
 - ✅ 6-DOF trajectory simulation
 - ✅ Gravity + drag + thrust modeling
@@ -204,19 +291,38 @@ python -m pytest --cov=app --cov-report=html
 - ✅ ANISE planetary ephemeris
 - ✅ Ground station visibility
 - ✅ Eclipse detection
-- 🟡 CRS-21 validation (<5% error target)
+- ✅ OMM format support
+- ✅ CDM integration
+- ✅ TLE/OMM dual mode
+- ✅ Monte Carlo simulation engine (internal)
+- ✅ Circuit breakers + resilience patterns
+- ✅ 11,000+ satellite tracking
 
-### Phase 1: Polish
-- [ ] UI for launch simulation
-- [ ] Real-time trajectory visualization
-- [ ] Multiple mission scenarios
-- [ ] Export formats (CSV, JSON, KML)
+### 📋 Phase 1: Production Hardening (5 weeks)
+- [ ] OpenTelemetry distributed tracing
+- [ ] Sentry error tracking
+- [ ] 60% test coverage
+- [ ] E2E tests (Playwright)
+- [ ] Load testing (k6)
+- [ ] Dependency injection refactor
+- [ ] Request ID middleware
 
-### Phase 2: Advanced Features
-- [ ] Monte Carlo simulation
+### 🔵 Phase 2: Spatial-Grade (2 months)
+- [ ] ISO/IEC 25010 audit
+- [ ] OWASP Top 10 compliance
+- [ ] Penetration testing
+- [ ] Chaos engineering
+- [ ] Multi-region deployment
+- [ ] Disaster recovery plan
+- [ ] NASA software standards review
+
+### 🚀 Phase 3: Advanced Features
+- [ ] Monte Carlo UI (public endpoint)
 - [ ] Optimal trajectory planning
 - [ ] Launch window analysis
 - [ ] Multi-body dynamics
+- [ ] Maneuver planning
+- [ ] Formation flying analysis
 
 ## 📝 Development
 
@@ -240,10 +346,17 @@ npm run dev
 backend/
 ├── app/
 │   ├── api/              # API endpoints
+│   │   ├── satellites.py      # Satellite tracking + OMM
+│   │   ├── cdm.py            # Conjunction Data Messages
+│   │   ├── launch_simulation.py
+│   │   ├── data_source.py    # TLE/OMM switching
+│   │   └── ...
 │   ├── services/         # Business logic
 │   │   ├── simulation_6dof.py
+│   │   ├── launch_simulator.py    # Monte Carlo engine
 │   │   ├── guidance_realistic.py
 │   │   ├── anise_planetary.py
+│   │   ├── spacetrack.py         # CDM client
 │   │   └── ...
 │   ├── models/           # Data models
 │   └── core/             # Config, metrics
@@ -256,8 +369,25 @@ frontend/
 ├── src/
 │   ├── components/       # React components
 │   ├── services/         # API clients
-│   └── hooks/            # Custom hooks
+│   ├── hooks/            # Custom hooks
+│   └── stores/           # State management
 ```
+
+## 🔒 Security & Compliance
+
+### Implemented Protections
+- ✅ Satellite ID validation (regex `^\d{1,5}$`)
+- ✅ Input sanitization (XXE/injection prevention)
+- ✅ Rate limiting (SlowAPI)
+- ✅ CORS restrictions
+- ✅ Security headers (CSP, HSTS, etc.)
+- ✅ Secrets not in Git
+- ✅ Circuit breakers on all external APIs
+
+### Standards Compliance
+- **CCSDS OMM 2.0** - NASA/ESA orbital data format
+- **OWASP Top 10** - In progress (P1/P2)
+- **ISO/IEC 25010** - Planned (P2)
 
 ## 🤝 Contributing
 
@@ -277,8 +407,9 @@ MIT License - See [LICENSE](LICENSE) for details
 - **ANISE** by NYX Space - High-performance astrodynamics toolkit
 - **SpaceX** - Publicly available mission data
 - **NASA JPL** - DE440s ephemeris and planetary data
-- **Space-Track.org** - Satellite catalog and TLE data
+- **Space-Track.org** - Satellite catalog, TLE, and CDM data
 - **Celestrak** - Public TLE distribution
+- **Launch Library 2** - Live launch data
 
 ## 📧 Contact
 
