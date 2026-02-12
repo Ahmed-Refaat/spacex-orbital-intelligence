@@ -3,8 +3,7 @@ import { useFrame, useLoader } from '@react-three/fiber'
 import { Sphere } from '@react-three/drei'
 import * as THREE from 'three'
 import { useStore } from '@/stores/useStore'
-
-const EARTH_RADIUS = 6.371 // Scaled radius
+import { EARTH_RADIUS } from '@/constants/scene'
 
 // NASA Blue Marble texture URLs
 const EARTH_TEXTURE_URL = 'https://unpkg.com/three-globe@2.31.1/example/img/earth-blue-marble.jpg'

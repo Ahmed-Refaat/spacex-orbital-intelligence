@@ -133,13 +133,9 @@ async def lifespan(app: FastAPI):
                     # Fallback: Load mock satellites
                     try:
                         from app.services.mock_satellites import mock_generator
-                        satellites = mock_generator.get_positions()
-                        for sat in satellites[:2000]:  # Limit to 2000
-                            tle = mock_generator.get_tle(sat["id"])
-                            if tle:
-                                orbital_engine.load_tle(sat["id"], tle["line1"], tle["line2"])
-                        SATELLITES_LOADED.set(orbital_engine.satellite_count)
-                        logger.info("Mock satellites loaded", count=orbital_engine.satellite_count)
+                        satellites = mock_generator.get_all_positions()
+                        SATELLITES_LOADED.set(len(satellites))
+                        logger.info("Mock satellites available", count=len(satellites))
                     except Exception as mock_err:
                         logger.error("Mock data load failed", error=str(mock_err))
                     
@@ -164,13 +160,9 @@ async def lifespan(app: FastAPI):
                     # Fallback: Load mock satellites
                     try:
                         from app.services.mock_satellites import mock_generator
-                        satellites = mock_generator.get_positions()
-                        for sat in satellites[:2000]:
-                            tle = mock_generator.get_tle(sat["id"])
-                            if tle:
-                                orbital_engine.load_tle(sat["id"], tle["line1"], tle["line2"])
-                        SATELLITES_LOADED.set(orbital_engine.satellite_count)
-                        logger.info("Mock satellites loaded", count=orbital_engine.satellite_count)
+                        satellites = mock_generator.get_all_positions()
+                        SATELLITES_LOADED.set(len(satellites))
+                        logger.info("Mock satellites available", count=len(satellites))
                     except Exception as mock_err:
                         logger.error("Mock data load failed", error=str(mock_err))
     

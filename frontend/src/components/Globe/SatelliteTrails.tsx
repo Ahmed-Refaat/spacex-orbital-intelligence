@@ -2,6 +2,7 @@ import { useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import type { SatellitePosition } from '@/types'
+import { altitudeToSceneRadius } from '@/constants/scene'
 
 const TRAIL_LENGTH = 50 // Number of position history points
 const TRAIL_UPDATE_INTERVAL = 100 // ms between trail updates
@@ -21,15 +22,11 @@ export function SatelliteTrails({ positions, enabled }: SatelliteTrailsProps) {
   const trailsRef = useRef<Map<string, TrailSystem>>(new Map())
   const groupRef = useRef<THREE.Group>(null)
 
-  // Convert lat/lon/alt to 3D position
+  // Convert lat/lon/alt to 3D position with realistic altitude
   const toPosition = (sat: SatellitePosition): THREE.Vector3 => {
-    const EARTH_RADIUS = 6.371
-    const ALTITUDE_SCALE = 0.015
-    
     const phi = (90 - sat.lat) * (Math.PI / 180)
     const theta = (sat.lon + 180) * (Math.PI / 180)
-    const altitudeOffset = (sat.alt / 100) * ALTITUDE_SCALE
-    const r = EARTH_RADIUS + altitudeOffset
+    const r = altitudeToSceneRadius(sat.alt)
 
     return new THREE.Vector3(
       -r * Math.sin(phi) * Math.cos(theta),

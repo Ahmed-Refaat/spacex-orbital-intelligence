@@ -1,7 +1,6 @@
 import { useMemo } from 'react'
 import * as THREE from 'three'
-
-const EARTH_RADIUS = 6.371
+import { EARTH_RADIUS } from '@/constants/scene'
 
 const atmosphereVertexShader = `
   varying vec3 vNormal;

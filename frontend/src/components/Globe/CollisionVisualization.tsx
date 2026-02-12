@@ -2,6 +2,7 @@ import { useRef, useMemo } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { Text } from '@react-three/drei'
+import { altitudeToSceneRadius } from '@/constants/scene'
 
 interface Conjunction {
   sat1Id: string
@@ -164,14 +165,10 @@ export function generateMockConjunctions(satellites: any[]): Conjunction[] {
         const lonDiff = Math.abs(sat1.lon - sat2.lon)
         
         if (latDiff < 10 && lonDiff < 10) { // Rough proximity
-          const EARTH_RADIUS = 6.371
-          const ALTITUDE_SCALE = 0.015
-          
           const toPos = (s: any) => {
             const phi = (90 - s.lat) * (Math.PI / 180)
             const theta = (s.lon + 180) * (Math.PI / 180)
-            const altitudeOffset = (s.alt / 100) * ALTITUDE_SCALE
-            const r = EARTH_RADIUS + altitudeOffset
+            const r = altitudeToSceneRadius(s.alt)
             
             return new THREE.Vector3(
               -r * Math.sin(phi) * Math.cos(theta),

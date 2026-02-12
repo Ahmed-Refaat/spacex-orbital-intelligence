@@ -81,7 +81,8 @@ async def get_all_positions():
     
     # Try cache first
     cached = await cache.get(cache_key)
-    if cached:
+    if cached and cached.get("count", 0) > 0:
+        # Only use cache if it contains actual data
         return cached
     
     # Check if TLE data already loaded (don't wait for fetch)

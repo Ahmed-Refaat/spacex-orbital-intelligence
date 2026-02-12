@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { useWebSocket } from '@/hooks/useWebSocket'
+import { useDataSource } from '@/hooks/useDataSource'
 import { useStore } from '@/stores/useStore'
 
 // Lazy load heavy components for code splitting
@@ -21,6 +22,7 @@ function AppContent() {
   // Initialize WebSocket connection
   useWebSocket()
   const { wsConnected } = useStore()
+  const { sourceLabel, isLoading: dataSourceLoading, error: dataSourceError } = useDataSource()
 
   return (
     <div className="h-screen w-screen overflow-hidden bg-spacex-dark">
@@ -43,6 +45,17 @@ function AppContent() {
               </span>
               <span className="text-xs text-gray-500">•</span>
               <p className="text-xs text-gray-400">Real-time Starlink Constellation Tracking</p>
+            </div>
+            <div className="mt-1.5">
+              <p className="text-[10px] text-gray-500">
+                {dataSourceLoading ? (
+                  <span className="opacity-60">Loading data source...</span>
+                ) : dataSourceError ? (
+                  <span className="text-red-400/60">Data source unavailable</span>
+                ) : (
+                  <span>{sourceLabel}</span>
+                )}
+              </p>
             </div>
           </div>
         </div>

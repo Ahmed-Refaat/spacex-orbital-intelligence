@@ -5,9 +5,7 @@ import { Line } from '@react-three/drei'
 import { useQuery } from '@tanstack/react-query'
 import { useStore } from '@/stores/useStore'
 import { getSatelliteOrbit } from '@/services/api'
-
-const EARTH_RADIUS = 6.371
-const ALTITUDE_SCALE = 0.015 // Same scaling as Satellites.tsx for consistency
+import { EARTH_RADIUS, altitudeToSceneRadius } from '@/constants/scene'
 
 interface OrbitPoint {
   t: string
@@ -28,7 +26,7 @@ export function OrbitPath() {
     staleTime: 60000,
   })
 
-  // Convert orbit points to 3D coordinates (using proportional altitude scaling)
+  // Convert orbit points to 3D coordinates with realistic altitude
   const orbitPoints = useMemo(() => {
     if (!orbitData?.orbit) return []
     
@@ -36,9 +34,8 @@ export function OrbitPath() {
       const phi = (90 - point.lat) * (Math.PI / 180)
       const theta = (point.lon + 180) * (Math.PI / 180)
       
-      // Use same proportional altitude scaling as satellites
-      const altitudeOffset = (point.alt / 100) * ALTITUDE_SCALE
-      const r = EARTH_RADIUS + altitudeOffset
+      // Realistic altitude: 1 unit = 1000km
+      const r = altitudeToSceneRadius(point.alt)
 
       return new THREE.Vector3(
         -r * Math.sin(phi) * Math.cos(theta),
