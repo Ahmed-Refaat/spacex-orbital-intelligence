@@ -1,4 +1,4 @@
 #!/bin/bash
-cd /home/clawd/clawd/projects/spacex-orbital/backend
+cd /home/clawd/prod/spacex-orbital-intelligence/backend
 source venv/bin/activate
-exec uvicorn app.main:app --host 0.0.0.0 --port 8001
+exec uvicorn app.main:app --host 0.0.0.0 --port 8000

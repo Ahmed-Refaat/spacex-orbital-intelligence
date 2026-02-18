@@ -2,7 +2,7 @@ module.exports = {
   apps: [{
     name: 'spacex-backend',
     script: './start.sh',
-    cwd: '/home/clawd/clawd/projects/spacex-orbital/backend',
+    cwd: '/home/clawd/prod/spacex-orbital-intelligence/backend',
     interpreter: '/bin/bash',
     
     // Stability
